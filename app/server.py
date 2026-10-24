@@ -361,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype.endswith("+xml"):
             ctype += "; charset=utf-8"
-        cache = "no-cache" if target.suffix == ".html" else "public, max-age=604800"
+        cache = "no-cache"
         etag = f'"{int(target.stat().st_mtime)}-{len(data)}"'
         if self.headers.get("If-None-Match") == etag:
             return self.send(304, head=head)
