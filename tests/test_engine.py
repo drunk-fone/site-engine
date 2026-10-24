@@ -166,6 +166,17 @@ class TestSiteEngineSecurity(unittest.TestCase):
         self.assertEqual(order["total"], 33)
         self.assertEqual(order["kunde"]["plz_ort"], "8000 Zürich")
 
+        # Test runtime settings persistence on /data/site/config/settings.json
+        server.save_runtime_settings({
+            "admin_user": "customadmin",
+            "mail_to": "orders@example.com",
+            "testmodus": False,
+        })
+        eff = server.get_effective_settings()
+        self.assertEqual(eff["admin_user"], "customadmin")
+        self.assertEqual(eff["mail_to"], "orders@example.com")
+        self.assertFalse(eff["testmodus"])
+
 if __name__ == "__main__":
     unittest.main()
 

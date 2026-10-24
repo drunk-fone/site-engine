@@ -27,7 +27,7 @@
     table { width: 100%; border-collapse: collapse; font-size: .92rem; }
     th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
     th { color: var(--muted); font-weight: 600; font-size: .82rem; text-transform: uppercase; letter-spacing: .05em; }
-    input[type="text"], input[type="number"], select, textarea {
+    input[type="text"], input[type="number"], input[type="password"], input[type="email"], select, textarea {
       width: 100%; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 8px; font: inherit; color: var(--ink); background: #fff;
     }
     textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; min-height: 420px; white-space: pre; }
@@ -58,6 +58,7 @@
       <button class="tab" data-tab="bilder">2. Bilder & Fotos</button>
       <button class="tab" data-tab="import">3. ZIP-Import & HTML-Editor</button>
       <button class="tab" data-tab="bestellungen">4. Bestellungen</button>
+      <button class="tab" data-tab="settings">5. Einstellungen (Login & E-Mail)</button>
     </div>
 
     <!-- TAB 1: KATALOG -->
@@ -191,6 +192,44 @@
             </thead>
             <tbody id="order-rows"></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: EINSTELLUNGEN (LOGIN & E-MAIL) -->
+    <div id="tab-settings" class="tab-pane" hidden>
+      <div class="card">
+        <h2>🔐 Admin-Login ändern</h2>
+        <p class="sub">Hier kannst du den Benutzernamen und das Passwort für dieses Admin-Cockpit neu setzen. Das Passwort wird als PBKDF2-SHA256-Hash auf dem persistenten Volume gespeichert.</p>
+        <div class="grid2">
+          <label><span>Admin-Benutzername</span><input type="text" id="s-admin-user" autocomplete="username"></label>
+          <label><span>Neues Admin-Passwort (mind. 8 Zeichen, leer lassen = unverändert)</span><input type="password" id="s-admin-pw" autocomplete="new-password" placeholder="••••••••"></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>✉️ E-Mail-Versand bei Bestellungen (SMTP)</h2>
+        <p class="sub">Konfiguriere hier, wohin Bestellungen gesendet werden und hinterlege das 16-stellige Google App-Passwort für den Versand.</p>
+        <div class="grid2">
+          <label><span>Shop-Name (Absendername)</span><input type="text" id="s-shop-name"></label>
+          <label><span>Shop-URL</span><input type="text" id="s-shop-url"></label>
+          <label><span>Shop-Adresse (in E-Mail-Fusszeile)</span><input type="text" id="s-shop-address" placeholder="z. B. Musterstrasse 1, 8000 Zürich"></label>
+          <label><span>Bestellnummer-Präfix</span><input type="text" id="s-order-prefix" placeholder="ORD"></label>
+          <label><span>Empfänger-E-Mail für Bestellungen</span><input type="email" id="s-mail-to" placeholder="shop@example.com"></label>
+          <label><span>SMTP-Server</span><input type="text" id="s-smtp-host" placeholder="smtp.gmail.com"></label>
+          <label><span>SMTP-Port (465 = SSL, 587 = STARTTLS)</span><input type="number" id="s-smtp-port" placeholder="465"></label>
+          <label><span>SMTP-Benutzer (Gmail-Adresse)</span><input type="email" id="s-smtp-user" placeholder="shop@gmail.com"></label>
+          <label><span>SMTP-Passwort / Google App-Passwort <small id="s-pw-status" style="color:var(--ok)"></small></span>
+            <input type="password" id="s-smtp-pass" autocomplete="new-password" placeholder="16-stelliges App-Passwort eingeben">
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;padding-top:22px">
+            <input type="checkbox" id="s-live-mail" style="width:20px;height:20px">
+            <span><b>Live-E-Mail-Versand aktivieren</b> (sendet echte E-Mails bei Bestellungen)</span>
+          </label>
+        </div>
+        <div style="margin-top:18px;display:flex;gap:12px;flex-wrap:wrap">
+          <button class="btn primary" type="button" id="save-settings">Einstellungen & Login speichern</button>
+          <button class="btn" type="button" id="send-test-mail">Test-E-Mail an Empfänger senden</button>
         </div>
       </div>
     </div>
@@ -480,11 +519,70 @@
       }).join('');
     }
 
+    function renderSettings(s) {
+      if (!s) return;
+      document.getElementById('s-admin-user').value = s.admin_user || 'admin';
+      document.getElementById('s-admin-pw').value = '';
+      document.getElementById('s-shop-name').value = s.shop_name || '';
+      document.getElementById('s-shop-url').value = s.shop_url || '';
+      document.getElementById('s-shop-address').value = s.shop_address || '';
+      document.getElementById('s-order-prefix').value = s.order_prefix || '';
+      document.getElementById('s-mail-to').value = s.mail_to || '';
+      document.getElementById('s-smtp-host').value = s.smtp_host || 'smtp.gmail.com';
+      document.getElementById('s-smtp-port').value = s.smtp_port || 465;
+      document.getElementById('s-smtp-user').value = s.smtp_user || '';
+      document.getElementById('s-smtp-pass').value = '';
+      document.getElementById('s-pw-status').textContent = s.smtp_pass_set ? '(✓ hinterlegt)' : '(noch nicht hinterlegt)';
+      document.getElementById('s-live-mail').checked = !s.testmodus;
+    }
+
+    document.getElementById('save-settings').addEventListener('click', function() {
+      var payload = {
+        new_admin_user: document.getElementById('s-admin-user').value.trim(),
+        new_admin_password: document.getElementById('s-admin-pw').value,
+        shop_name: document.getElementById('s-shop-name').value.trim(),
+        shop_url: document.getElementById('s-shop-url').value.trim(),
+        shop_address: document.getElementById('s-shop-address').value.trim(),
+        order_prefix: document.getElementById('s-order-prefix').value.trim(),
+        mail_to: document.getElementById('s-mail-to').value.trim(),
+        smtp_host: document.getElementById('s-smtp-host').value.trim(),
+        smtp_port: parseInt(document.getElementById('s-smtp-port').value, 10) || 465,
+        smtp_user: document.getElementById('s-smtp-user').value.trim(),
+        smtp_pass: document.getElementById('s-smtp-pass').value,
+        testmodus: !document.getElementById('s-live-mail').checked
+      };
+      fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.ok) {
+          toast('Einstellungen gespeichert!');
+          loadState();
+        } else {
+          toast(res.error || 'Fehler beim Speichern', 'err');
+        }
+      });
+    });
+
+    document.getElementById('send-test-mail').addEventListener('click', function() {
+      toast('Test-E-Mail wird gesendet …');
+      fetch('/api/admin/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.ok) toast('Test-E-Mail erfolgreich gesendet!');
+        else toast(res.error || 'E-Mail-Fehler', 'err');
+      });
+    });
+
     function loadState() {
       fetch('/api/admin/state').then(function(r) { return r.json(); }).then(function(data) {
         STATE = data;
         renderCatalog();
         renderImages();
+        renderSettings(data.settings || {});
         document.getElementById('html-editor').value = data.html || '';
         renderOrders(data.orders || []);
       });

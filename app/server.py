@@ -18,6 +18,7 @@ import logging
 import mimetypes
 import os
 import re
+import secrets
 import signal
 import smtplib
 import ssl
@@ -58,6 +59,30 @@ def custom_public_dir() -> Path:
 
 def custom_config_file() -> Path:
     return (DATA_DIR / "site" / "config" / "site.json").resolve()
+
+
+def custom_settings_file() -> Path:
+    return (DATA_DIR / "site" / "config" / "settings.json").resolve()
+
+
+def load_runtime_settings() -> dict:
+    sf = custom_settings_file()
+    if sf.is_file():
+        try:
+            return json.loads(sf.read_text(encoding="utf-8"))
+        except Exception as e:
+            log.warning("Fehler beim Lesen von %s: %s", sf, e)
+    return {}
+
+
+def save_runtime_settings(data: dict):
+    sf = custom_settings_file()
+    sf.parent.mkdir(parents=True, exist_ok=True)
+    sf.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        os.chmod(sf, 0o600)
+    except OSError:
+        pass
 
 
 def active_index_file() -> Path:
@@ -284,7 +309,8 @@ def next_order_number(year):
         f.write(str(n) + "\n")
         f.flush()
         fcntl.flock(f, fcntl.LOCK_UN)
-    return f"{ORDER_PREFIX}-{year}-{n:03d}"
+    prefix = get_effective_settings()["order_prefix"]
+    return f"{prefix}-{year}-{n:03d}"
 
 
 def save_order(o):
@@ -347,48 +373,78 @@ def summary(o):
     return "\n".join(out)
 
 
-def send_mail(to, subject, body, reply_to=None):
+def get_effective_settings() -> dict:
+    s = load_runtime_settings()
+    testmodus = s.get("testmodus")
+    if testmodus is None:
+        testmodus = TESTMODUS
+    else:
+        testmodus = bool(testmodus)
+    smtp_user = str(s.get("smtp_user") if "smtp_user" in s else SMTP_USER).strip()
+    mail_to = str(s.get("mail_to") if "mail_to" in s else MAIL_TO).strip()
+    return {
+        "admin_user": str(s.get("admin_user") or ENV("ADMIN_USER", ADMIN_USER)).strip(),
+        "admin_password_hash": str(s.get("admin_password_hash") or ENV("ADMIN_PASSWORD_HASH", "")).strip(),
+        "shop_name": str(s.get("shop_name") or SHOP_NAME).strip(),
+        "shop_url": str(s.get("shop_url") or SHOP_URL).strip(),
+        "shop_address": str(s.get("shop_address") if "shop_address" in s else SHOP_ADDRESS).strip(),
+        "order_prefix": str(s.get("order_prefix") or ORDER_PREFIX).strip(),
+        "mail_to": mail_to,
+        "smtp_host": str(s.get("smtp_host") or SMTP_HOST).strip(),
+        "smtp_port": int(s.get("smtp_port") or SMTP_PORT),
+        "smtp_user": smtp_user,
+        "smtp_pass": str(s.get("smtp_pass") if "smtp_pass" in s else SMTP_PASS),
+        "mail_from": smtp_user or mail_to or MAIL_FROM,
+        "testmodus": testmodus,
+    }
+
+
+def send_mail(to, subject, body, reply_to=None, force_live=False):
+    cfg = get_effective_settings()
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = formataddr((SHOP_NAME, MAIL_FROM))
+    msg["From"] = formataddr((cfg["shop_name"], cfg["mail_from"]))
     msg["To"] = to
-    msg["Message-ID"] = make_msgid(domain=SHOP_NAME.lower().replace(" ", "") + ".internal")
+    msg["Message-ID"] = make_msgid(domain=cfg["shop_name"].lower().replace(" ", "") + ".internal")
     if reply_to:
         msg["Reply-To"] = reply_to
     msg.set_content(body)
 
-    if TESTMODUS:
+    if cfg["testmodus"] and not force_live:
         log.info("[TESTMODUS] E-Mail an %s NICHT gesendet. Betreff: %s", to, subject)
         return
+    if not cfg["smtp_user"] or not cfg["smtp_pass"]:
+        raise RuntimeError("SMTP-Benutzer oder SMTP-Passwort ist noch nicht hinterlegt.")
     ctx = ssl.create_default_context()
-    if SMTP_PORT == 465:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx, timeout=20) as s:
-            s.login(SMTP_USER, SMTP_PASS)
+    if cfg["smtp_port"] == 465:
+        with smtplib.SMTP_SSL(cfg["smtp_host"], cfg["smtp_port"], context=ctx, timeout=20) as s:
+            s.login(cfg["smtp_user"], cfg["smtp_pass"])
             s.send_message(msg)
     else:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as s:
+        with smtplib.SMTP(cfg["smtp_host"], cfg["smtp_port"], timeout=20) as s:
             s.starttls(context=ctx)
-            s.login(SMTP_USER, SMTP_PASS)
+            s.login(cfg["smtp_user"], cfg["smtp_pass"])
             s.send_message(msg)
 
 
 def notify(o):
+    cfg = get_effective_settings()
     k, nr = o["kunde"], o["bestellnummer"]
     shop_body = (f"Neue Bestellung {nr} vom {o['datum']}\n\n{summary(o)}\n\n"
                  f"E-Mail: {k['email']}\nTelefon: {k['telefon'] or '–'}\n"
                  f"Nachricht: {o['nachricht'] or '–'}\n\n"
                  f"Zahlungsart: {o.get('zahlung', 'Rechnung')}")
     kunde_body = (f"Hallo {k['name'].split()[0]}\n\n"
-                  f"Danke für deine Bestellung bei {SHOP_NAME}! Wir haben sie erhalten.\n\n"
+                  f"Danke für deine Bestellung bei {cfg['shop_name']}! Wir haben sie erhalten.\n\n"
                   f"Bestellnummer: {nr}\n\n{summary(o)}\n\n"
                   f"Als Nächstes schicken wir dir die "
                   f"{'Twint-Zahlungsanfrage' if o.get('zahlung') == 'Twint' else 'Rechnung (zahlbar innert 10 Tagen)'}. "
                   f"Nach dem Zahlungseingang wird deine Bestellung bearbeitet und versendet.\n\n"
                   f"Fragen? Antworte einfach auf diese E-Mail.\n\n"
-                  f"Liebe Grüsse\n{SHOP_NAME}\n{SHOP_ADDRESS}\n{SHOP_URL}".strip())
+                  f"Liebe Grüsse\n{cfg['shop_name']}\n{cfg['shop_address']}\n{cfg['shop_url']}".strip())
     ok = True
-    for to, subj, body, rt in ((MAIL_TO, f"Neue Bestellung {nr} – {CURRENCY} {fmt_money(o['total'])}", shop_body, k["email"]),
-                               (k["email"], f"Deine Bestellung {nr} bei {SHOP_NAME}", kunde_body, MAIL_TO)):
+    for to, subj, body, rt in ((cfg["mail_to"], f"Neue Bestellung {nr} – {CURRENCY} {fmt_money(o['total'])}", shop_body, k["email"]),
+                               (k["email"], f"Deine Bestellung {nr} bei {cfg['shop_name']}", kunde_body, cfg["mail_to"])):
         try:
             send_mail(to, subj, body, rt)
         except Exception as e:
@@ -544,9 +600,10 @@ class Handler(BaseHTTPRequestHandler):
                   {"Cache-Control": "no-store"})
 
     def check_admin_auth(self) -> bool:
-        expected_user = ENV("ADMIN_USER", ADMIN_USER)
+        cfg = get_effective_settings()
+        expected_user = cfg["admin_user"]
         expected_pw = ENV("ADMIN_PASSWORD", ADMIN_PASSWORD)
-        expected_hash = ENV("ADMIN_PASSWORD_HASH", "")
+        expected_hash = cfg["admin_password_hash"]
         if not expected_pw and not expected_hash:
             return False
         auth = self.headers.get("Authorization", "")
@@ -611,11 +668,25 @@ class Handler(BaseHTTPRequestHandler):
                         motif_images = json.loads(m_img.group(1))
                     except Exception:
                         pass
+                cfg = get_effective_settings()
                 return self.json(200, {
                     "catalog": {
                         "versand": CAT.get("versand", {"preis": 9, "gratis_ab_betrag": 60}),
                         "motive": CAT.get("motive", []),
                         "produkte": CAT.get("produkte", []),
+                    },
+                    "settings": {
+                        "admin_user": cfg["admin_user"],
+                        "shop_name": cfg["shop_name"],
+                        "shop_url": cfg["shop_url"],
+                        "shop_address": cfg["shop_address"],
+                        "order_prefix": cfg["order_prefix"],
+                        "mail_to": cfg["mail_to"],
+                        "smtp_host": cfg["smtp_host"],
+                        "smtp_port": cfg["smtp_port"],
+                        "smtp_user": cfg["smtp_user"],
+                        "smtp_pass_set": bool(cfg["smtp_pass"]),
+                        "testmodus": cfg["testmodus"],
                     },
                     "community": community,
                     "motif_images": motif_images,
@@ -723,7 +794,7 @@ class Handler(BaseHTTPRequestHandler):
             "nr": nr,
             "total": order["total"],
             "currency": CURRENCY,
-            "mail_gesendet": mail_ok or TESTMODUS,
+            "mail_gesendet": mail_ok or get_effective_settings()["testmodus"],
         })
 
     def handle_admin_post(self, path: str, query: str):
@@ -823,6 +894,49 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     c_idx.write_text(html, encoding="utf-8")
                 return self.json(200, {"ok": True})
+
+            if path == "/api/admin/settings":
+                cur = load_runtime_settings()
+                for k in ("shop_name", "shop_url", "shop_address", "order_prefix", "mail_to", "smtp_host", "smtp_user"):
+                    if k in payload:
+                        cur[k] = clean(payload.get(k), 120)
+                if "smtp_port" in payload:
+                    try:
+                        cur["smtp_port"] = int(payload["smtp_port"])
+                    except (ValueError, TypeError):
+                        cur["smtp_port"] = 465
+                if "testmodus" in payload:
+                    cur["testmodus"] = bool(payload["testmodus"])
+                raw_smtp_pass = str(payload.get("smtp_pass") or "").strip()
+                if raw_smtp_pass:
+                    if "gmail" in str(cur.get("smtp_host", SMTP_HOST)).lower():
+                        raw_smtp_pass = raw_smtp_pass.replace(" ", "")
+                    cur["smtp_pass"] = raw_smtp_pass
+                new_user = clean(payload.get("new_admin_user"), 60)
+                if new_user:
+                    cur["admin_user"] = new_user
+                new_pw = str(payload.get("new_admin_password") or "")
+                if new_pw:
+                    if len(new_pw) < 8:
+                        return self.json(400, {"ok": False, "error": "Das neue Admin-Passwort muss mindestens 8 Zeichen lang sein."})
+                    salt = secrets.token_hex(16)
+                    digest = hashlib.pbkdf2_hmac("sha256", new_pw.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+                    cur["admin_password_hash"] = f"{salt}${digest}"
+                save_runtime_settings(cur)
+                return self.json(200, {"ok": True, "reauth": bool(new_user or new_pw)})
+
+            if path == "/api/admin/test-email":
+                cfg = get_effective_settings()
+                try:
+                    send_mail(
+                        cfg["mail_to"],
+                        f"Test-E-Mail von {cfg['shop_name']}",
+                        f"Der E-Mail-Versand für {cfg['shop_name']} ({cfg['shop_url']}) ist erfolgreich eingerichtet!",
+                        force_live=True,
+                    )
+                    return self.json(200, {"ok": True})
+                except Exception as e:
+                    return self.json(400, {"ok": False, "error": f"E-Mail-Versand fehlgeschlagen: {e}"})
 
             if path == "/api/admin/html":
                 html = str(payload.get("html") or "")
