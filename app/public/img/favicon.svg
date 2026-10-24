@@ -1,1 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 154"><defs><clipPath id="h"><path d="M70 0C58 20 82 40 70 60C58 80 82 100 70 120C62 136 76 146 70 154L140 154L140 0Z"/></clipPath><clipPath id="e"><path d="M70 8C110 8 128 50 128 92C128 128 102 146 70 146C38 146 12 128 12 92C12 50 30 8 70 8Z"/></clipPath></defs><path d="M70 8C110 8 128 50 128 92C128 128 102 146 70 146C38 146 12 128 12 92C12 50 30 8 70 8Z" fill="#fff"/><g clip-path="url(#e)"><g clip-path="url(#h)"><rect x="40" width="110" height="40" fill="#0098A6"/><rect x="40" y="40" width="110" height="36" fill="#D6336C"/><rect x="40" y="76" width="110" height="34" fill="#F2B705"/><rect x="40" y="110" width="110" height="44" fill="#7A4E2D"/></g></g><path d="M70 8C110 8 128 50 128 92C128 128 102 146 70 146C38 146 12 128 12 92C12 50 30 8 70 8Z" fill="none" stroke="#1D2426" stroke-width="7"/><circle cx="48" cy="58" r="7" fill="#1D2426"/><circle cx="92" cy="58" r="7" fill="#1D2426"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+  <path d="M3 6h18"/>
+  <path d="M16 10a4 4 0 0 1-8 0"/>
+</svg>
