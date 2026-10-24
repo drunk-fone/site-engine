@@ -1,69 +1,41 @@
 {
-  "shop_name": "Sculptcolor",
-  "shop_tagline": "3D-gedruckte Figuren aus weissem PLA zum Selbstbemalen",
-  "shop_url": "https://sculptcolor.ch",
-  "shop_address": "Eschenrain 49, 2540 Grenchen",
-  "contact_email": "sculptcolor@gmail.com",
+  "shop_name": "Demo Shop",
+  "shop_tagline": "Modern, Fast & Lean Webshop Engine",
+  "shop_url": "https://example.com",
+  "shop_address": "Musterstrasse 1, 8000 Zürich",
+  "contact_email": "demo@example.com",
   "currency": "CHF",
-  "order_prefix": "SC-W",
+  "order_prefix": "ORD",
   "versand": {
-    "preis": 9,
-    "gratis_ab_betrag": 60
+    "preis": 7,
+    "gratis_ab_betrag": 50
   },
   "motive": [
-    "Schlafender Fuchs",
-    "Abstrakte Statue (Paar)",
-    "Astronaut",
-    "Bärenkopf",
-    "Eichhörnchen",
-    "Kristall",
-    "Pilzgruppe",
-    "Pinguin mit Herz",
-    "Schildkröte"
+    "Design Classic",
+    "Design Modern",
+    "Design Minimal"
   ],
   "produkte": [
     {
-      "id": "set-klein",
-      "name": "Set klein",
-      "groesse": "6 cm",
-      "preis": 24,
+      "id": "starter-set",
+      "name": "Starter Set",
+      "groesse": "Complete Kit",
+      "preis": 39,
       "motive": 1,
       "set": true
     },
     {
-      "id": "set-gross",
-      "name": "Set gross",
-      "groesse": "12 cm",
-      "preis": 45,
-      "motive": 1,
-      "set": true
-    },
-    {
-      "id": "figur-klein",
-      "name": "Figur klein",
-      "groesse": "6 cm",
-      "preis": 14,
+      "id": "single-item",
+      "name": "Standard Item",
+      "groesse": "Standard",
+      "preis": 19,
       "motive": 1
     },
     {
-      "id": "figur-gross",
-      "name": "Figur gross",
-      "groesse": "12 cm",
-      "preis": 29,
-      "motive": 1
-    },
-    {
-      "id": "farbkette",
-      "name": "Farbkette",
-      "groesse": "6 Farben",
-      "preis": 8,
-      "motive": 0
-    },
-    {
-      "id": "sticker",
-      "name": "Sticker-Set",
-      "groesse": "5 Logo-Sticker",
-      "preis": 2,
+      "id": "accessory-pack",
+      "name": "Accessory Pack",
+      "groesse": "3-Pack",
+      "preis": 9,
       "motive": 0
     }
   ]

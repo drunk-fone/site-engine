@@ -1,895 +1,353 @@
 <!doctype html>
-<html lang="de-CH">
+<html lang="de">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Sculptcolor – 3D-gedruckte Figuren aus weissem PLA zum Selbstbemalen. Sets mit Acrylfarben, Pinsel und Mischkarten, gedruckt in Grenchen.">
-<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
-<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
-<title>Sculptcolor</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;500;600&display=swap">
-<script id="produkte" type="application/json">
-{
-  "versand": { "preis": 9, "gratis_ab_betrag": 60 },
-  "motive": ["Schlafender Fuchs", "Abstrakte Statue (Paar)", "Astronaut", "Bärenkopf", "Eichhörnchen", "Kristall", "Pilzgruppe", "Pinguin mit Herz", "Schildkröte"],
-  "produkte": [
-    { "id": "set-klein",   "name": "Set klein",   "groesse": "6 cm",     "preis": 24, "motive": 1, "set": true },
-    { "id": "set-gross",   "name": "Set gross",   "groesse": "12 cm",    "preis": 45, "motive": 1, "set": true },
-    { "id": "figur-klein", "name": "Figur klein", "groesse": "6 cm",     "preis": 14, "motive": 1 },
-    { "id": "figur-gross", "name": "Figur gross", "groesse": "12 cm",    "preis": 29, "motive": 1 },
-    { "id": "farbkette",   "name": "Farbkette",   "groesse": "6 Farben", "preis": 8,  "motive": 0 },
-    { "id": "sticker",     "name": "Sticker-Set", "groesse": "5 Logo-Sticker", "preis": 2, "motive": 0 }
-  ]
-}
-</script>
-<style>
-/* Layout: weisse Figur trifft Farbe – helle Fläche, bemalbarer Fuchs als Hero, Shop mit Warenkorb-Schublade */
-:root{
-  --bg:#FFFFFF; --surface:#F3F7F7; --ink:#1D2426; --muted:#56656A; --line:#DCE5E6;
-  --cyan:#0098A6; --magenta:#D6336C; --yellow:#F2B705; --brown:#7A4E2D;
-  --raw:#FFFFFF; --raw-edge:#C9D3D5; --on-accent:#FFFFFF; --error:#B3261E; --ok:#1B7F4B;
-  --logo-1:#0098A6; --logo-2:#D6336C; --logo-3:#F2B705; --logo-4:#7A4E2D; --logo-line:#1D2426;
-  --display:"Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
-  --body:"Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#141A1C; --surface:#1D2426; --ink:#EEF3F3; --muted:#A3B1B4; --line:#2F3A3D;
-  --cyan:#2BB8C5; --magenta:#E8578A; --yellow:#F5C432; --brown:#B07A52;
-  --raw:#F4F6F6; --raw-edge:#6D7B7E; --on-accent:#0F1416; --error:#FF8A80; --ok:#6FD39C;
-  --logo-1:#23B5C2; --logo-2:#E04A7F; --logo-3:#F2B705; --logo-4:#A9774F; --logo-line:transparent; color-scheme:dark }}
-:root[data-theme="dark"]{
-  --bg:#141A1C; --surface:#1D2426; --ink:#EEF3F3; --muted:#A3B1B4; --line:#2F3A3D;
-  --cyan:#2BB8C5; --magenta:#E8578A; --yellow:#F5C432; --brown:#B07A52;
-  --raw:#F4F6F6; --raw-edge:#6D7B7E; --on-accent:#0F1416; --error:#FF8A80; --ok:#6FD39C;
-  --logo-1:#23B5C2; --logo-2:#E04A7F; --logo-3:#F2B705; --logo-4:#A9774F; --logo-line:transparent; color-scheme:dark }
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Site-Engine – Lean, secure and modern eCommerce storefront.">
+  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+  <title>Site-Engine Store</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 12px;
+      --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.5; padding-bottom: 80px; }
+    header { background: #fff; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; }
+    .nav { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; }
+    .brand { font-size: 1.25rem; font-weight: 700; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 0.5rem; }
+    .brand img { width: 28px; height: 28px; }
+    .cart-btn { background: var(--primary); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 9999px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+    .cart-btn:hover { background: var(--primary-hover); }
+    .badge { background: #fff; color: var(--primary); padding: 0.1rem 0.5rem; border-radius: 9999px; font-size: 0.85rem; font-weight: 700; }
 
-*{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);font:400 1.0625rem/1.6 var(--body);padding-inline:clamp(16px,4vw,48px);overflow-x:clip}
+    .hero { max-width: 1100px; margin: 3rem auto; padding: 0 1.5rem; text-align: center; }
+    .hero h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 0.75rem; letter-spacing: -0.02em; }
+    .hero p { font-size: 1.15rem; color: var(--text-muted); max-width: 600px; margin: 0 auto 1.5rem; }
 
-/* Logo-Streifen als Gestaltungselement */
-.topbar{display:flex;height:8px;width:100vw;margin-left:calc(50% - 50vw)}
-.topbar span{flex:1}
-.band{display:block;width:100vw;height:clamp(36px,5vw,56px);margin-left:calc(50% - 50vw)}
-.tint-cyan,.tint-yellow{position:relative;box-shadow:0 0 0 100vmax var(--tint);clip-path:inset(0 -100vmax);background:var(--tint);border-top:0}
-.tint-cyan{--tint:color-mix(in srgb,var(--logo-1) 12%,var(--bg))}
-.tint-yellow{--tint:color-mix(in srgb,var(--logo-3) 16%,var(--bg))}
-.wrap{max-width:1080px;margin-inline:auto}
-h1,h2,h3{font-family:var(--display);font-weight:800;line-height:1.05;text-wrap:balance;margin:0}
-h2{font-size:clamp(1.9rem,4vw,2.8rem);letter-spacing:-.01em}
-h3{font-size:1.25rem;font-weight:800}
-p{margin:0}
-a{color:var(--cyan)}
-a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--magenta);outline-offset:3px;border-radius:6px}
-.eyebrow{font:600 .78rem/1 var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--cyan)}
-section{padding-block:clamp(56px,9vw,104px);border-top:1px solid var(--line)}
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 3rem; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; transition: transform 0.15s, box-shadow 0.15s; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+    .card img { width: 100%; height: 220px; object-fit: cover; background: #f1f5f9; }
+    .card-body { padding: 1.25rem; display: flex; flex-direction: column; flex: 1; }
+    .card-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .card-desc { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem; flex: 1; }
+    .card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border); }
+    .price { font-size: 1.25rem; font-weight: 700; color: var(--text); }
+    .add-btn { background: var(--primary); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .add-btn:hover { background: var(--primary-hover); }
 
-/* Kopf */
-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:20px;flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:14px;text-decoration:none;color:var(--ink)}
-.brand .mark{width:46px;height:auto;flex:none}
-.brand .word{display:flex;flex-direction:column;gap:5px}
-.brand .name{font:800 1.75rem/1 var(--display);letter-spacing:-.02em}
-.brand .tag{font:500 .68rem/1 var(--body);letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-.headright{display:flex;align-items:center;gap:clamp(12px,2.4vw,28px);flex-wrap:wrap}
-nav{display:flex;gap:clamp(12px,2.4vw,28px);flex-wrap:wrap}
-nav a{color:var(--ink);text-decoration:none;font-weight:500}
-nav a:hover{color:var(--cyan)}
-.cartbtn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;border:2px solid var(--ink);background:var(--bg);color:var(--ink);font:600 .95rem/1 var(--body);cursor:pointer}
-.cartbtn .count{min-width:1.6em;height:1.6em;padding-inline:.3em;border-radius:999px;background:var(--magenta);color:#FFFFFF;display:inline-grid;place-items:center;font-size:.8rem;font-variant-numeric:tabular-nums}
-.foot-brand{display:flex;gap:14px;align-items:flex-start}
-.foot-brand .mark{width:38px;height:auto;flex:none}
+    /* Modal / Drawer */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; padding: 1rem; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: #fff; width: 100%; max-width: 520px; border-radius: var(--radius); padding: 1.5rem; max-height: 90vh; overflow-y: auto; position: relative; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
+    .modal-title { font-size: 1.25rem; font-weight: 700; }
+    .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
+    .cart-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border); font-size: 0.95rem; }
+    .form-group { margin-bottom: 0.75rem; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; color: var(--text-muted); }
+    .form-control { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 0.95rem; }
+    .btn-submit { width: 100%; background: #16a34a; color: #fff; border: none; padding: 0.75rem; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 1rem; }
+    .btn-submit:hover { background: #15803d; }
+    .notice { padding: 0.75rem; background: #f0fdf4; color: #166534; border-radius: 6px; font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
 
-/* Hero */
-.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(24px,5vw,64px);align-items:center;padding-block:clamp(24px,5vw,64px) clamp(56px,8vw,96px)}
-.hero > *{min-width:0}
-.hero h1{font-size:clamp(2.6rem,7vw,5rem);letter-spacing:-.02em}
-.hero h1 .split{background:linear-gradient(100deg,var(--ink) 0 46%,var(--magenta) 46% 62%,var(--cyan) 62%);-webkit-background-clip:text;background-clip:text;color:transparent}
-.lead{font-size:1.2rem;color:var(--muted);max-width:34ch;margin-top:20px}
-.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 22px;border-radius:999px;font:600 1rem/1 var(--body);text-decoration:none;border:2px solid var(--ink);color:var(--ink);background:transparent;cursor:pointer}
-.btn.primary{background:var(--cyan);border-color:var(--cyan);color:var(--on-accent)}
-.btn:hover{transform:translateY(-1px)}
-.btn[disabled]{opacity:.6;cursor:progress;transform:none}
-.facts{display:flex;gap:20px;flex-wrap:wrap;margin-top:28px;color:var(--muted);font-size:.95rem}
-.facts b{color:var(--ink);font-weight:600}
+    footer { text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 2rem 1.5rem; border-top: 1px solid var(--border); margin-top: 3rem; }
+  </style>
 
-/* Malstation */
-.studio{background:var(--surface);border-radius:28px;padding:clamp(18px,3vw,28px)}
-.studio svg{width:100%;height:auto;display:block;border-radius:18px}
-.studio svg .part{cursor:pointer;transition:fill .25s ease}
-.studio svg .part:hover{stroke-width:3}
-.palette{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
-.pot{width:38px;height:38px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0;position:relative}
-.pot[aria-pressed="true"]{box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--ink)}
-.palette .hint{font-size:.88rem;color:var(--muted);margin-left:auto}
-.reset{background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer;font:inherit;font-size:.88rem}
-
-/* Ablauf */
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(20px,3vw,40px);margin-top:40px}
-.step{display:grid;gap:10px;min-width:0}
-.step .n{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font:800 2rem/1 var(--display);background:var(--logo-1);color:#FFFFFF}
-.step:nth-child(2) .n{background:var(--logo-2)}
-.step:nth-child(3) .n{background:var(--logo-3);color:#1D2426}
-.step p{color:var(--muted)}
-
-/* Motive */
-.head{display:flex;justify-content:space-between;align-items:end;gap:20px;flex-wrap:wrap}
-.head p{color:var(--muted);max-width:42ch}
-.motifs{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:36px}
-.motif{background:var(--bg);border-radius:18px;padding:16px;display:grid;gap:12px;min-width:0}
-.motif .art{aspect-ratio:1;max-width:100%;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--logo-1) 18%,var(--bg))}
-.motif:nth-child(4n+2) .art{background:color-mix(in srgb,var(--logo-2) 16%,var(--bg))}
-.motif:nth-child(4n+3) .art{background:color-mix(in srgb,var(--logo-3) 24%,var(--bg))}
-.motif:nth-child(4n+4) .art{background:color-mix(in srgb,var(--logo-4) 18%,var(--bg))}
-.motif .art svg{width:62%;height:auto}
-.motif .art{position:relative;overflow:hidden}
-.motif .art img{width:100%;height:100%;object-fit:contain;display:block}
-.motif .art img.foto{object-fit:cover}
-.lightbox figure img[src$=".jpg"]{border-radius:14px}
-.gal{position:relative;width:100%;height:100%;display:block;padding:0;border:0;background:none;cursor:zoom-in}
-.gal-nav{position:absolute;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;border:0;background:color-mix(in srgb,var(--bg) 85%,transparent);color:var(--ink);display:grid;place-items:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.15)}
-.gal-nav.prev{left:6px}.gal-nav.next{right:6px}
-.dots{position:absolute;left:0;right:0;bottom:8px;display:flex;justify-content:center;gap:6px;pointer-events:none}
-.dots i{width:7px;height:7px;border-radius:50%;background:color-mix(in srgb,var(--ink) 25%,transparent)}
-.dots i.on{background:var(--ink)}
-.lightbox{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px}
-.lightbox .lb-bg{position:absolute;inset:0;background:rgba(10,16,18,.72)}
-.lightbox figure{position:relative;margin:0;width:min(760px,100%);background:var(--lb,#FBF3DC);border-radius:24px;padding:clamp(12px,3vw,24px);display:grid;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.lightbox figure img{width:100%;height:auto;aspect-ratio:1;object-fit:contain;display:block}
-.lightbox figcaption{display:flex;justify-content:space-between;align-items:center;gap:12px;font-weight:600;color:#1D2426}
-.lightbox .gal-nav{width:44px;height:44px}
-.lightbox .lb-x{position:absolute;top:10px;right:10px;width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.9);color:#1D2426;display:grid;place-items:center;cursor:pointer}
-.motif span{font-weight:600;font-size:.98rem;line-height:1.3}
-.community .art{background:linear-gradient(135deg,color-mix(in srgb,var(--logo-1) 22%,var(--bg)),color-mix(in srgb,var(--logo-2) 20%,var(--bg)))!important}
-.cm-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;height:100%;padding:10px;text-align:center;text-decoration:none;color:var(--ink)}
-.cm-empty b{font:800 .9rem/1.15 var(--display)}
-.cm-empty small{font-size:.7rem;line-height:1.3;color:var(--muted)}
-.community .cm-empty svg{width:40px!important;height:44px!important;flex:none;margin:0}
-.cm-ig{font-weight:500;font-size:.85rem;color:var(--cyan);text-decoration:none;white-space:nowrap}
-.motif-note{display:flex;gap:5px;align-items:flex-start;margin-top:clamp(36px,5vw,56px);max-width:62ch;color:var(--muted);font-size:.72rem;line-height:1.45;opacity:.85}
-.motif-note svg{flex:none;width:12px;height:12px;margin-top:1px;color:var(--muted)}
-
-/* Shop */
-.prices{display:grid;grid-template-columns:1fr 1fr;gap:clamp(20px,3vw,32px);margin-top:36px}
-.set{border:2px solid var(--ink);border-radius:24px;padding:clamp(26px,3vw,34px) clamp(22px,3vw,32px) clamp(22px,3vw,32px);display:grid;gap:14px;align-content:start;min-width:0;position:relative;overflow:hidden}
-.set::before{content:"";position:absolute;inset:0 0 auto 0;height:10px;background:linear-gradient(90deg,var(--logo-1) 0 25%,var(--logo-2) 25% 50%,var(--logo-3) 50% 75%,var(--logo-4) 75%)}
-.set.big{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.set.big .price small,.set.big li,.set.big .field span{color:color-mix(in srgb,var(--bg) 78%,transparent)}
-.set .size{font:600 .8rem/1 var(--body);letter-spacing:.12em;text-transform:uppercase}
-.price{font:800 2.6rem/1 var(--display);font-variant-numeric:tabular-nums}
-.price small{font:500 1rem/1 var(--body);color:var(--muted);margin-right:6px}
-.set ul{margin:0;padding-left:1.1em;color:var(--muted);display:grid;gap:4px}
-.buy{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:6px}
-.buy .field{flex:1 1 180px}
-.field{display:grid;gap:6px;min-width:0}
-.field span{font-size:.85rem;font-weight:600;color:var(--muted)}
-select,input,textarea{width:100%;font:500 1rem/1.3 var(--body);color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:12px;padding:11px 12px;min-height:46px}
-textarea{min-height:84px;resize:vertical}
-.set.big select{border-color:color-mix(in srgb,var(--bg) 30%,transparent)}
-.added{font-size:.88rem;font-weight:600;color:var(--ok);min-height:1.3em}
-.set.big .added{color:var(--logo-3)}
-.extras{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px}
-.prod{border:1.5px solid var(--line);border-radius:20px;padding:20px;display:grid;gap:12px;align-content:start;min-width:0}
-.prod-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.prod-top .p{font:800 1.3rem/1 var(--display);white-space:nowrap;font-variant-numeric:tabular-nums}
-.prod .sub{color:var(--muted);font-size:.92rem;line-height:1.4}
-.prod .btn{padding:11px 16px;font-size:.95rem}
-.ship{display:flex;gap:10px 28px;flex-wrap:wrap;margin-top:22px;color:var(--muted);font-size:.95rem}
-.ship b{color:var(--ink)}
-
-/* Kindergarten */
-.kiga{display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,5vw,64px);align-items:center}
-.kiga > *{min-width:0}
-.kiga p{color:var(--muted);margin-top:16px;max-width:46ch}
-.kiga ul{list-style:none;margin:0;padding:0;display:grid;gap:12px}
-.kiga li{display:flex;gap:14px;align-items:baseline;padding:16px 18px;background:var(--bg);border-radius:16px}
-.kiga li b{font-family:var(--display);font-size:1.3rem;flex:0 0 5.4em;white-space:nowrap;color:var(--magenta)}
-.kiga li span{min-width:0}
-
-/* Bestellen / Kontakt */
-.order{display:grid;grid-template-columns:1.1fr .9fr;gap:clamp(24px,5vw,64px)}
-.order > *{min-width:0}
-.ways{display:grid;gap:14px;margin-top:28px}
-.way{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 20px;border:1px solid var(--line);border-radius:16px;flex-wrap:wrap}
-.way > div:first-child{min-width:0}
-.way p{color:var(--muted);font-size:.95rem}
-.copy{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.copy code{font:600 .98rem/1.2 var(--body);user-select:all;overflow-wrap:anywhere}
-.mini{font:600 .85rem/1 var(--body);padding:8px 14px;border-radius:999px;border:1.5px solid var(--ink);background:none;color:var(--ink);cursor:pointer}
-.note{background:var(--surface);border-radius:20px;padding:24px;display:grid;gap:10px;align-content:start}
-.note p{color:var(--muted)}
-
-/* Rechtliches */
-.legal{display:grid;gap:10px;margin-top:28px}
-.legal details{border:1px solid var(--line);border-radius:16px;padding:0 20px}
-.legal summary{cursor:pointer;padding-block:16px;font:800 1.1rem/1.2 var(--display);list-style-position:inside}
-.legal .txt{padding-bottom:20px;color:var(--muted);display:grid;gap:12px;max-width:70ch;font-size:.97rem}
-.legal .txt h4{margin:6px 0 0;color:var(--ink);font:600 1rem/1.3 var(--body)}
-.legal .txt ul{margin:0;padding-left:1.1em;display:grid;gap:4px}
-
-footer{border-top:1px solid var(--line);padding-block:32px 48px;display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;color:var(--muted);font-size:.92rem}
-footer address{font-style:normal}
-footer .links{display:flex;gap:16px;flex-wrap:wrap}
-footer .links a{color:var(--muted)}
-
-/* Warenkorb-Schublade */
-.fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom, 0px));z-index:30;display:inline-flex;align-items:center;gap:10px;padding:14px 20px;border-radius:999px;border:0;background:var(--ink);color:var(--bg);font:600 1rem/1 var(--body);cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.22);font-variant-numeric:tabular-nums}
-.fab .count{background:var(--magenta);color:#FFFFFF;border-radius:999px;min-width:1.7em;height:1.7em;display:inline-grid;place-items:center;font-size:.85rem;padding-inline:.3em}
-.drawer{position:fixed;inset:0;z-index:50}
-.backdrop{position:absolute;inset:0;background:rgba(10,16,18,.5)}
-.panel{position:absolute;top:0;right:0;bottom:0;width:min(460px,100%);background:var(--bg);color:var(--ink);overflow-y:auto;padding:calc(20px + env(safe-area-inset-top, 0px)) 20px calc(28px + env(safe-area-inset-bottom, 0px));display:grid;gap:18px;align-content:start;box-shadow:-12px 0 40px rgba(0,0,0,.25)}
-.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.panel-head h2{font-size:1.8rem}
-.x{width:44px;height:44px;border-radius:50%;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);display:grid;place-items:center;cursor:pointer}
-.panel .topbar{width:auto;margin:0 -20px;height:6px}
-#cart-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
-.line{display:grid;grid-template-columns:1fr auto;gap:6px 12px;padding:14px;border-radius:14px;background:var(--surface)}
-.line .t{font-weight:600;min-width:0}
-.line .m{grid-column:1;color:var(--muted);font-size:.9rem;line-height:1.35}
-.line .amt{font-weight:600;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
-.qty{display:flex;align-items:center;gap:6px;grid-column:1 / -1}
-.qty button{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font:600 1.1rem/1 var(--body);cursor:pointer}
-.qty output{min-width:2ch;text-align:center;font-variant-numeric:tabular-nums;font-weight:600}
-.qty .rm{margin-left:auto;width:auto;border:0;background:none;text-decoration:underline;color:var(--muted);font-size:.88rem}
-.sum{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0;font-variant-numeric:tabular-nums}
-.sum dt{color:var(--muted)}
-.sum dd{margin:0;text-align:right}
-.sum .total{font:800 1.3rem/1.2 var(--display);color:var(--ink)}
-.shiphint{font-size:.9rem;color:var(--muted);background:color-mix(in srgb,var(--logo-3) 18%,var(--bg));border-radius:12px;padding:10px 12px;display:grid;gap:8px;justify-items:start}
-.shiphint b{color:var(--ink)}
-.checkout{display:grid;gap:14px;border-top:1px solid var(--line);padding-top:18px}
-.checkout h3{font-size:1.35rem}
-.row2{display:grid;grid-template-columns:7.5em 1fr;gap:10px}
-.row2 > *{min-width:0}
-.radios{display:grid;gap:8px;border:0;padding:0;margin:0}
-.radios legend{font-size:.85rem;font-weight:600;color:var(--muted);margin-bottom:6px;padding:0}
-.radio{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer}
-.radio input,.check input{width:20px;height:20px;min-height:0;margin:2px 0 0;flex:none;accent-color:var(--cyan)}
-.radio small{display:block;color:var(--muted);font-size:.85rem}
-.check{display:flex;gap:10px;align-items:flex-start;font-size:.95rem}
-.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-.err{color:var(--error);font-weight:600;font-size:.95rem}
-.done{display:grid;gap:12px}
-.done .big{font:800 1.6rem/1.15 var(--display)}
-.done pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface);border-radius:12px;padding:14px;font:500 .85rem/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0}
-.preview{font-size:.88rem;background:color-mix(in srgb,var(--logo-1) 14%,var(--bg));border-radius:12px;padding:10px 12px}
-
-@media (max-width:860px){
-  .hero,.kiga,.order,.prices{grid-template-columns:1fr}
-  .motifs{grid-template-columns:repeat(3,1fr)}
-  .steps{grid-template-columns:1fr}
-}
-@media (max-width:640px){
-  .extras{grid-template-columns:1fr}
-}
-@media (max-width:480px){
-  .motifs{grid-template-columns:repeat(2,1fr)}
-  .extras{grid-template-columns:1fr}
-  nav{display:none}
-  .brand .mark{width:40px}
-  .brand .name{font-size:1.5rem}
-  .palette .hint{margin-left:0;width:100%}
-}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}.btn:hover{transform:none}}
-</style>
+  <!-- Default Fallback Catalog JSON -->
+  <script id="produkte" type="application/json">
+  {
+    "versand": { "preis": 7, "gratis_ab_betrag": 50 },
+    "motive": ["Design Classic", "Design Modern", "Design Minimal"],
+    "produkte": [
+      { "id": "starter-set", "name": "Starter Set", "groesse": "Complete Kit", "preis": 39, "motive": 1, "set": true },
+      { "id": "single-item", "name": "Standard Item", "groesse": "Standard", "preis": 19, "motive": 1 },
+      { "id": "accessory-pack", "name": "Accessory Pack", "groesse": "3-Pack", "preis": 9, "motive": 0 }
+    ]
+  }
+  </script>
 </head>
 <body>
-
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <clipPath id="sc-wave"><path d="M0 22 C150 6 250 34 400 18 C550 4 650 32 800 16 C950 2 1050 30 1200 14 L1200 64 L0 64Z"/></clipPath>
-    <clipPath id="sc-half"><path d="M70 0C58 20 82 40 70 60C58 80 82 100 70 120C62 136 76 146 70 154L140 154L140 0Z"/></clipPath>
-    <clipPath id="sc-egg"><path d="M70 8C110 8 128 50 128 92C128 128 102 146 70 146C38 146 12 128 12 92C12 50 30 8 70 8Z"/></clipPath>
-    <symbol id="sc-mark" viewBox="0 0 140 154">
-      <path d="M70 8C110 8 128 50 128 92C128 128 102 146 70 146C38 146 12 128 12 92C12 50 30 8 70 8Z" fill="#FFFFFF"/>
-      <g clip-path="url(#sc-egg)"><g clip-path="url(#sc-half)">
-        <rect x="40" y="0" width="110" height="40" fill="var(--logo-1)"/>
-        <rect x="40" y="40" width="110" height="36" fill="var(--logo-2)"/>
-        <rect x="40" y="76" width="110" height="34" fill="var(--logo-3)"/>
-        <rect x="40" y="110" width="110" height="44" fill="var(--logo-4)"/>
-      </g></g>
-      <path d="M70 8C110 8 128 50 128 92C128 128 102 146 70 146C38 146 12 128 12 92C12 50 30 8 70 8Z" fill="none" stroke="var(--logo-line)" stroke-width="5"/>
-      <circle cx="48" cy="58" r="7" fill="#1D2426"/><circle cx="92" cy="58" r="7" fill="#1D2426"/>
-    </symbol>
-  </defs>
-</svg>
-
-<div class="wrap">
-<div class="topbar" aria-hidden="true"><span style="background:var(--logo-1)"></span><span style="background:var(--logo-2)"></span><span style="background:var(--logo-3)"></span><span style="background:var(--logo-4)"></span></div>
-<header>
-  <a class="brand" href="#top" aria-label="Sculptcolor Startseite">
-    <svg class="mark" viewBox="0 0 140 154" aria-hidden="true"><use href="#sc-mark"/></svg>
-    <span class="word"><span class="name">Sculptcolor</span><span class="tag">Figuren zum Selbstbemalen</span></span>
-  </a>
-  <div class="headright">
-    <nav aria-label="Hauptnavigation">
-      <a href="#motive">Motive</a>
-      <a href="#shop">Shop</a>
-      <a href="#kindergarten">Kindergärten</a>
-      <a href="#kontakt">Kontakt</a>
-    </nav>
-    <button class="cartbtn" type="button" data-open-cart>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
-      Warenkorb <span class="count" data-count>0</span>
-    </button>
-  </div>
-</header>
-
-<div class="hero" id="top">
-  <div>
-    <p class="eyebrow">3D-Figuren zum Selbstbemalen</p>
-    <h1 style="margin-top:14px">Weiss bestellt. <span class="split">Bunt behalten.</span></h1>
-    <p class="lead">Figuren aus weissem PLA, in der Schweiz gedruckt und selbst entworfen. Im Set liegen Acrylfarben, Pinsel und zwei Karten zum Farbenmischen bei.</p>
-    <div class="cta">
-      <a class="btn primary" href="#shop">Zum Shop</a>
-      <a class="btn" href="#motive">Alle 9 Motive</a>
-    </div>
-    <div class="facts">
-      <span><b>6 cm</b> oder <b>12 cm</b></span>
-      <span><b>6 Farben</b> pro Kette</span>
-      <span>Versand <b>gratis ab CHF 60</b></span>
-    </div>
-  </div>
-
-  <div class="studio" aria-label="Probier es aus: Fuchs bemalen">
-    <svg viewBox="0 0 320 230" role="img" aria-labelledby="foxtitle">
-      <title id="foxtitle">Schlafender Fuchs zum Anmalen. Farbe wählen, dann auf eine Fläche tippen.</title>
-      <clipPath id="fox-half"><path d="M176 0 C160 40 194 80 176 120 C160 160 194 196 176 230 L320 230 L320 0Z"/></clipPath>
-      <g clip-path="url(#fox-half)" aria-hidden="true">
-        <rect x="0" y="0" width="320" height="62" fill="var(--logo-1)"/>
-        <rect x="0" y="62" width="320" height="56" fill="var(--logo-2)"/>
-        <rect x="0" y="118" width="320" height="54" fill="var(--logo-3)"/>
-        <rect x="0" y="172" width="320" height="58" fill="var(--logo-4)"/>
-      </g>
-      <ellipse cx="160" cy="212" rx="128" ry="10" fill="var(--line)"/>
-      <path class="part" d="M246 170 C300 150 304 92 262 74 C236 64 214 84 226 104 C238 124 268 112 262 140 C258 160 232 168 210 170Z" fill="var(--raw)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>
-      <path class="part" d="M262 74 C236 64 214 84 226 104 C232 92 246 84 262 74Z" fill="var(--raw)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>
-      <path class="part" d="M70 204 C52 160 84 112 150 108 C214 104 252 140 246 176 C242 198 220 206 196 206Z" fill="var(--raw)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>
-      <path class="part" d="M98 204 C96 180 112 162 136 160 C154 160 160 182 152 204Z" fill="var(--raw)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>
-      <path class="part" d="M46 150 C40 122 56 98 86 96 C112 94 130 112 128 136 C126 158 104 170 80 168 C64 167 50 162 46 150Z" fill="var(--raw)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>
-      <path class="part" d="M60 104 L52 66 L84 96Z" fill="var(--raw)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>
-      <path class="part" d="M96 96 L114 62 L122 106Z" fill="var(--raw)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>
-      <path class="part" d="M46 150 C26 152 14 146 12 140 C30 134 44 132 60 138 C58 146 52 150 46 150Z" fill="var(--raw)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>
-      <circle class="part" cx="14" cy="139" r="5" fill="var(--raw)" stroke="var(--ink)" stroke-width="2.2"/>
-      <path d="M70 128 q8 6 16 0" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round"/>
-      <path d="M100 124 q7 5 14 0" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round"/>
-    </svg>
-    <div class="palette" role="group" aria-label="Farbkette">
-      <button class="pot" style="background:#FFFFFF" data-c="#FFFFFF" aria-label="Weiss" aria-pressed="false"></button>
-      <button class="pot" style="background:#1D2426" data-c="#1D2426" aria-label="Schwarz" aria-pressed="false"></button>
-      <button class="pot" style="background:#F2B705" data-c="#F2B705" aria-label="Gelb" aria-pressed="false"></button>
-      <button class="pot" style="background:#D6336C" data-c="#D6336C" aria-label="Magenta" aria-pressed="false"></button>
-      <button class="pot" style="background:#0098A6" data-c="#0098A6" aria-label="Cyan" aria-pressed="false"></button>
-      <button class="pot" style="background:#7A4E2D" data-c="#7A4E2D" aria-label="Braun" aria-pressed="true"></button>
-      <span class="hint">Farbe wählen, Fuchs antippen · <button class="reset" id="reset" type="button">neu grundieren</button></span>
-    </div>
-  </div>
-</div>
-
-<section aria-labelledby="ablauf">
-  <p class="eyebrow">So funktioniert's</p>
-  <h2 id="ablauf" style="margin-top:12px">Auspacken, mischen, malen.</h2>
-  <div class="steps">
-    <div class="step"><span class="n">1</span><h3>Figur in die Hand</h3><p>Die weisse Figur kommt fertig gedruckt. Du hältst sie beim Malen einfach in der Hand.</p></div>
-    <div class="step"><span class="n">2</span><h3>Farben mischen</h3><p>Sechs Grundfarben in kleinen Töpfchen. Die Rezeptkarte zeigt, welche Farben du mischen kannst, auf der Mischkarte rührst du sie an.</p></div>
-    <div class="step"><span class="n">3</span><h3>Bemalen und zeigen</h3><p>Wie du deine Figur bemalst, entscheidest du. Über den QR-Code auf der Karte findest du uns auf Instagram, dein Ergebnis zeigst du mit #sculptcolor.</p></div>
-  </div>
-</section>
-
-<section id="motive" class="tint-yellow" aria-labelledby="motive-h">
-  <div class="head">
-    <div><p class="eyebrow">Motive</p><h2 id="motive-h" style="margin-top:12px">Neun Figuren, alle selbst entworfen.</h2></div>
-    <p>Jedes Motiv gibt es nur bei Sculptcolor. Klein mit 6 cm oder gross mit 12 cm.</p>
-  </div>
-  <div class="motifs" id="motifs"></div>
-  <p class="motif-note"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span>Motivbilder sind aus dem 3D-Modell berechnet. Gedruckt wird in Schichten von 0.16&nbsp;mm, feine Linien können je nach Farbe und Auftrag leicht sichtbar bleiben. Mit zwei Farbschichten oder leichtem Schleifen wird die Oberfläche glatter.</span></p>
-</section>
-
-<section id="shop" aria-labelledby="shop-h">
-  <p class="eyebrow">Shop</p>
-  <h2 id="shop-h" style="margin-top:12px">Alles drin, was du zum Malen brauchst.</h2>
-  <div class="prices">
-    <article class="set" data-product="set-klein">
-      <span class="size">Set klein · 6 cm</span>
-      <div class="price"><small>CHF</small><span data-price>24</span></div>
-      <ul><li>1 Figur nach Wahl</li><li>1 Farbkette mit 6 Farben</li><li>1 Pinsel</li><li>Rezeptkarte und Mischkarte</li></ul>
-      <div class="buy"><div data-selects></div><button class="btn primary" type="button" data-add>In den Warenkorb</button></div>
-      <p class="added" data-added aria-live="polite"></p>
-    </article>
-    <article class="set big" data-product="set-gross">
-      <span class="size">Set gross · 12 cm</span>
-      <div class="price"><small>CHF</small><span data-price>45</span></div>
-      <ul><li>1 Figur nach Wahl</li><li>2 Farbketten mit je 6 Farben</li><li>2 Pinsel</li><li>Rezeptkarte und Mischkarte</li></ul>
-      <div class="buy"><div data-selects></div><button class="btn primary" type="button" data-add>In den Warenkorb</button></div>
-      <p class="added" data-added aria-live="polite"></p>
-    </article>
-  </div>
-  <div class="extras">
-    <article class="prod" data-product="figur-klein">
-      <div class="prod-top"><h3>Figur klein</h3><span class="p">CHF <span data-price>14</span></span></div>
-      <p class="sub">6 cm, ohne Farben. Für alle mit eigenen Farben.</p>
-      <div data-selects></div>
-      <button class="btn" type="button" data-add>In den Warenkorb</button>
-      <p class="added" data-added aria-live="polite"></p>
-    </article>
-    <article class="prod" data-product="figur-gross">
-      <div class="prod-top"><h3>Figur gross</h3><span class="p">CHF <span data-price>29</span></span></div>
-      <p class="sub">12 cm, ohne Farben.</p>
-      <div data-selects></div>
-      <button class="btn" type="button" data-add>In den Warenkorb</button>
-      <p class="added" data-added aria-live="polite"></p>
-    </article>
-    <article class="prod" data-product="farbkette">
-      <div class="prod-top"><h3>Farbkette</h3><span class="p">CHF <span data-price>8</span></span></div>
-      <p class="sub">6 Farben: Weiss, Schwarz, Gelb, Magenta, Cyan, Braun.</p>
-      <div data-selects></div>
-      <button class="btn" type="button" data-add>In den Warenkorb</button>
-      <p class="added" data-added aria-live="polite"></p>
-    </article>
-  </div>
-  <div class="ship">
-    <span>Versand Schweiz mit PostPac Economy: <b>CHF 9</b></span>
-    <span><b>Gratis</b> ab CHF 60</span>
-    <span>Bezahlen mit <b>Twint</b> oder <b>Rechnung</b></span>
-  </div>
-</section>
-
-<div class="topbar" aria-hidden="true"><span style="background:var(--logo-1)"></span><span style="background:var(--logo-2)"></span><span style="background:var(--logo-3)"></span><span style="background:var(--logo-4)"></span></div>
-<section id="kindergarten" class="tint-cyan" aria-labelledby="kiga-h">
-  <div class="kiga">
-    <div>
-      <p class="eyebrow">Für Kindergärten, Horte und Spielgruppen</p>
-      <h2 id="kiga-h" style="margin-top:12px">Ein Klassensatz zum Malen.</h2>
-      <p>Kleine Figuren für die ganze Gruppe, zu einem günstigen Gruppenpreis. Passend für Geburtstage, Projektwochen oder als Abschiedsgeschenk. Schreib uns, wie viele Kinder mitmachen und bis wann ihr die Figuren braucht.</p>
-      <div class="cta"><a class="btn" href="#kontakt">Anfrage senden</a></div>
-    </div>
-    <ul>
-      <li><b>15–20 Stk.</b><span>kleine Figuren pro Satz, Motive gemischt oder einheitlich</span></li>
-      <li><b>6 cm</b><span>Die kleine Grösse, passt gut in Kinderhände und an Geburtstagspartys</span></li>
-      <li><b>ab CHF 6</b><span>pro Figur (CHF 6–8, je nach Menge und Motiv). Farbketten auf Wunsch für CHF 5 pro Kette</span></li>
-    </ul>
-  </div>
-</section>
-
-<div class="topbar" aria-hidden="true"><span style="background:var(--logo-1)"></span><span style="background:var(--logo-2)"></span><span style="background:var(--logo-3)"></span><span style="background:var(--logo-4)"></span></div>
-<section id="kontakt" style="border-top:0" aria-labelledby="kontakt-h">
-  <div class="order">
-    <div>
-      <p class="eyebrow">Kontakt</p>
-      <h2 id="kontakt-h" style="margin-top:12px">Fragen, Wunschmotive, Gruppen.</h2>
-      <div class="ways">
-        <div class="way">
-          <div><h3>E-Mail</h3><p>Für Anfragen von Kindergärten und alles rund um deine Bestellung.</p></div>
-          <div class="copy"><code id="mail">sculptcolor@gmail.com</code><button class="mini" type="button" id="copymail">Kopieren</button></div>
-        </div>
-        <div class="way">
-          <div><h3>Instagram</h3><p>Neue Motive, bemalte Figuren und Nachrichten.</p></div>
-          <a href="https://www.instagram.com/sculptcolor/" target="_blank" rel="noopener"><code>@sculptcolor</code></a>
-        </div>
-        <div class="way">
-          <div><h3>Weihnachtsmärkte</h3><p>Sets vor Ort anschauen und mitnehmen. Bezahlen mit Bar oder Twint.</p></div>
-        </div>
-      </div>
-    </div>
-    <aside class="note">
-      <h3>Hinweise</h3>
-      <p>Jede Figur wird auf Bestellung oder in kleinen Serien gedruckt. Feine Schichtlinien gehören zum 3D-Druck. Nach zwei Farbschichten sieht man sie meistens nicht mehr.</p>
-      <p>Acrylfarbe ist wasserlöslich, solange sie nass ist. Pinsel gleich nach dem Malen auswaschen.</p>
-      <p>Für Kinder unter 3 Jahren nicht geeignet: Kleinteile.</p>
-    </aside>
-  </div>
-</section>
-
-<section id="rechtliches" aria-labelledby="recht-h">
-  <h2 id="recht-h">Rechtliches</h2>
-  <div class="legal">
-    <details id="impressum">
-      <summary>Impressum</summary>
-      <div class="txt">
-        <p><b style="color:var(--ink)">Sculptcolor</b><br>Inhaber: Dominique Fankhauser<br>Eschenrain 49, 2540 Grenchen, Schweiz<br>E-Mail: sculptcolor@gmail.com</p>
-        <p>Einzelunternehmen. Sculptcolor ist nicht mehrwertsteuerpflichtig, darum wird keine Mehrwertsteuer ausgewiesen.</p>
-      </div>
-    </details>
-    <details id="datenschutz">
-      <summary>Datenschutz</summary>
-      <div class="txt">
-        <p>Verantwortlich für die Bearbeitung deiner Daten ist Sculptcolor (Adresse im Impressum). Wir halten uns an das Schweizer Datenschutzgesetz (DSG).</p>
-        <h4>Welche Daten wir bearbeiten</h4>
-        <p>Wenn du bestellst: Name, Lieferadresse, E-Mail-Adresse, freiwillig deine Telefonnummer, die bestellten Artikel und deine Nachricht. Wir brauchen diese Daten, um deine Bestellung abzuwickeln, zu versenden und bei Fragen mit dir Kontakt aufzunehmen.</p>
-        <h4>Wer die Daten sonst noch erhält</h4>
-        <ul>
-          <li>Die Schweizerische Post: Name und Adresse für den Versand.</li>
-          <li>Google (Gmail): Bestellungen und Bestätigungen werden per Gmail verschickt. Google kann Daten auch ausserhalb der Schweiz bearbeiten.</li>
-          <li>Cloudflare: Die Webseite wird über Cloudflare ausgeliefert. Dabei fallen technische Verbindungsdaten wie die IP-Adresse an.</li>
-          <li>Google Fonts: Die Schriften werden von Google geladen. Dabei wird deine IP-Adresse an Google übermittelt.</li>
-        </ul>
-        <h4>Speicherung</h4>
-        <p>Bestelldaten speichern wir auf unserem eigenen Server in der Schweiz. Buchhaltungsbelege bewahren wir so lange auf, wie es das Gesetz verlangt (in der Regel 10 Jahre). Wir verwenden keine Cookies und kein Tracking. Der Warenkorb wird nur in deinem Browser gespeichert.</p>
-        <h4>Deine Rechte</h4>
-        <p>Du kannst jederzeit Auskunft über deine Daten verlangen, sie berichtigen oder löschen lassen, soweit keine Aufbewahrungspflicht besteht. Schreib dazu an sculptcolor@gmail.com.</p>
-        <p>Stand: Oktober 2026</p>
-      </div>
-    </details>
-    <details id="agb">
-      <summary>AGB</summary>
-      <div class="txt">
-        <h4>1. Geltung</h4>
-        <p>Diese Bedingungen gelten für Bestellungen über diese Webseite. Wir liefern nur innerhalb der Schweiz.</p>
-        <h4>2. Bestellung und Vertrag</h4>
-        <p>Mit dem Absenden schickst du uns eine verbindliche Bestellung. Der Vertrag kommt zustande, wenn wir dir die Bestellung per E-Mail mit der Zahlungsanfrage bestätigen.</p>
-        <h4>3. Preise und Versand</h4>
-        <p>Alle Preise in Schweizer Franken. Keine Mehrwertsteuer, da Sculptcolor nicht mehrwertsteuerpflichtig ist. Versand mit PostPac Economy kostet CHF 9 und ist gratis ab CHF 60 Warenwert.</p>
-        <h4>4. Zahlung</h4>
-        <p>Du bezahlst mit Twint oder per Banküberweisung innert 10 Tagen. Nach der Bestellung erhältst du von uns die Twint-Anfrage oder die Rechnung per E-Mail. Wir versenden nach Eingang der Zahlung.</p>
-        <h4>5. Lieferung</h4>
-        <p>Die Figuren werden für dich gedruckt. Wir versenden in der Regel innert 7 Arbeitstagen nach Zahlungseingang.</p>
-        <h4>6. Rückgabe</h4>
-        <p>Unbemalte Figuren und ungeöffnete Farbketten kannst du innert 14 Tagen nach Erhalt zurückschicken. Die Rücksendekosten trägst du. Wir erstatten den Kaufpreis innert 14 Tagen nach Eingang der Ware. Bemalte Figuren sind von der Rückgabe ausgeschlossen.</p>
-        <h4>7. Beschädigte oder fehlerhafte Ware</h4>
-        <p>Melde uns Transportschäden oder Fehldrucke innert 7 Tagen nach Erhalt mit einem Foto. Du erhältst kostenlos Ersatz oder dein Geld zurück.</p>
-        <h4>8. Sicherheit</h4>
-        <p>Die Figuren enthalten Kleinteile und sind nicht für Kinder unter 3 Jahren geeignet. Kinder sollten beim Malen beaufsichtigt werden.</p>
-        <h4>9. Recht und Gerichtsstand</h4>
-        <p>Es gilt Schweizer Recht. Gerichtsstand ist Grenchen, soweit gesetzlich zulässig.</p>
-        <p>Stand: Oktober 2026</p>
-      </div>
-    </details>
-  </div>
-</section>
-
-<svg class="band" viewBox="0 0 1200 64" preserveAspectRatio="none" aria-hidden="true">
-  <g clip-path="url(#sc-wave)"><rect width="1200" height="26" fill="var(--logo-1)"/><rect y="26" width="1200" height="13" fill="var(--logo-2)"/><rect y="39" width="1200" height="12" fill="var(--logo-3)"/><rect y="51" width="1200" height="13" fill="var(--logo-4)"/></g>
-</svg>
-<footer style="border-top:0">
-  <div class="foot-brand">
-    <svg class="mark" viewBox="0 0 140 154" aria-hidden="true"><use href="#sc-mark"/></svg>
-    <address><b style="color:var(--ink)">Sculptcolor</b><br>Eschenrain 49<br>2540 Grenchen, Schweiz</address>
-  </div>
-  <div style="display:grid;gap:8px">
-    <div class="links"><a href="#impressum" data-legal>Impressum</a><a href="#datenschutz" data-legal>Datenschutz</a><a href="#agb" data-legal>AGB</a></div>
-    <span>Figuren aus PLA, gedruckt in Grenchen · © 2026 Sculptcolor</span>
-  </div>
-</footer>
-</div>
-
-<button class="fab" type="button" id="fab" data-open-cart hidden>Warenkorb <span class="count" data-count>0</span> <span>CHF <span id="fab-total">0</span></span></button>
-
-<div class="drawer" id="drawer" hidden role="dialog" aria-modal="true" aria-labelledby="cart-h">
-  <div class="backdrop" data-close></div>
-  <div class="panel">
-    <div class="topbar" aria-hidden="true"><span style="background:var(--logo-1)"></span><span style="background:var(--logo-2)"></span><span style="background:var(--logo-3)"></span><span style="background:var(--logo-4)"></span></div>
-    <div class="panel-head">
-      <h2 id="cart-h">Warenkorb</h2>
-      <button class="x" type="button" data-close aria-label="Warenkorb schliessen">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  <header>
+    <div class="nav">
+      <a href="/" class="brand">
+        <img src="img/favicon.svg" alt="Logo">
+        <span id="brand-name">Site-Engine Store</span>
+      </a>
+      <button class="cart-btn" onclick="openCart()">
+        Warenkorb <span class="badge" id="cart-count">0</span>
       </button>
     </div>
+  </header>
 
-    <div id="cart-main">
-      <p id="cart-empty" hidden>Noch nichts im Warenkorb. <a href="#shop" data-close>Zum Shop</a></p>
-      <div id="cart-filled" style="display:grid;gap:16px">
-        <ul id="cart-list"></ul>
-        <dl class="sum" id="cart-sum"></dl>
-        <div class="shiphint" id="ship-hint" hidden></div>
+  <main>
+    <section class="hero">
+      <h1 id="hero-title">Willkommen im Shop</h1>
+      <p id="hero-tagline">Schlanker, moderner und sicherer Webshop auf Basis von Site-Engine.</p>
+    </section>
 
-        <form class="checkout" id="checkout" novalidate>
-          <h3>Lieferadresse</h3>
-          <label class="field" for="f-name"><span>Vor- und Nachname</span><input id="f-name" name="name" autocomplete="name" required maxlength="80"></label>
-          <label class="field" for="f-email"><span>E-Mail</span><input id="f-email" name="email" type="email" autocomplete="email" required maxlength="120"></label>
-          <label class="field" for="f-tel"><span>Telefon (freiwillig)</span><input id="f-tel" name="telefon" type="tel" autocomplete="tel" maxlength="40"></label>
-          <label class="field" for="f-strasse"><span>Strasse und Nr.</span><input id="f-strasse" name="strasse" autocomplete="street-address" required maxlength="120"></label>
-          <div class="row2">
-            <label class="field" for="f-plz"><span>PLZ</span><input id="f-plz" name="plz" inputmode="numeric" autocomplete="postal-code" required pattern="[0-9]{4}" maxlength="4"></label>
-            <label class="field" for="f-ort"><span>Ort</span><input id="f-ort" name="ort" autocomplete="address-level2" required maxlength="80"></label>
-          </div>
-          <p style="font-size:.88rem;color:var(--muted)">Wir liefern nur innerhalb der Schweiz.</p>
-
-          <fieldset class="radios">
-            <legend>Bezahlung</legend>
-            <label class="radio" for="z-twint"><input type="radio" id="z-twint" name="zahlung" value="Twint" checked><span>Twint<small>Du erhältst eine Zahlungsanfrage per E-Mail.</small></span></label>
-            <label class="radio" for="z-rechnung"><input type="radio" id="z-rechnung" name="zahlung" value="Rechnung"><span>Rechnung<small>Banküberweisung innert 10 Tagen.</small></span></label>
-          </fieldset>
-
-          <label class="field" for="f-msg"><span>Nachricht (freiwillig)</span><textarea id="f-msg" name="nachricht" maxlength="1000" placeholder="z. B. Geschenk, Wunschtermin"></textarea></label>
-          <div class="hp" aria-hidden="true"><label for="f-website">Webseite</label><input id="f-website" name="website" tabindex="-1" autocomplete="off"></div>
-          <label class="check" for="f-agb"><input type="checkbox" id="f-agb" name="agb" required><span>Ich habe die <a href="#agb" data-legal>AGB</a> und die <a href="#datenschutz" data-legal>Datenschutzerklärung</a> gelesen.</span></label>
-
-          <p class="err" id="form-err" role="alert" hidden></p>
-          <button class="btn primary" type="submit" id="submit">Bestellung absenden</button>
-          <p style="font-size:.85rem;color:var(--muted)">Du bezahlst erst nach unserer Bestätigung per E-Mail.</p>
-        </form>
+    <div class="container">
+      <div class="grid" id="product-grid">
+        <!-- Dynamisch aus dem Katalog geladen -->
       </div>
     </div>
+  </main>
 
-    <div class="done" id="done" hidden></div>
+  <!-- Warenkorb & Checkout Modal -->
+  <div class="modal-backdrop" id="cart-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Warenkorb & Kasse</h3>
+        <button class="close-btn" onclick="closeCart()">&times;</button>
+      </div>
+
+      <div id="cart-items">
+        <p style="color:var(--text-muted); text-align:center; padding: 1rem 0;">Dein Warenkorb ist leer.</p>
+      </div>
+
+      <div id="checkout-form" style="display:none; margin-top: 1.5rem; border-top: 2px dashed var(--border); padding-top: 1rem;">
+        <h4 style="margin-bottom: 0.75rem;">Lieferadresse</h4>
+        <!-- Honeypot -->
+        <input type="text" id="cust-website" style="display:none;" tabindex="-1" autocomplete="off">
+
+        <div class="form-group">
+          <label>Vor- und Nachname *</label>
+          <input type="text" id="cust-name" class="form-control" placeholder="Max Muster" required>
+        </div>
+        <div class="form-group">
+          <label>Strasse & Hausnummer *</label>
+          <input type="text" id="cust-adresse" class="form-control" placeholder="Mustergasse 1" required>
+        </div>
+        <div class="form-group">
+          <label>PLZ & Ort *</label>
+          <input type="text" id="cust-plz" class="form-control" placeholder="8000 Zürich" required>
+        </div>
+        <div class="form-group">
+          <label>E-Mail-Adresse *</label>
+          <input type="email" id="cust-email" class="form-control" placeholder="max@example.com" required>
+        </div>
+        <div class="form-group">
+          <label>Telefon (optional)</label>
+          <input type="tel" id="cust-phone" class="form-control" placeholder="+41 79 000 00 00">
+        </div>
+        <div class="form-group">
+          <label>Bemerkung (optional)</label>
+          <textarea id="cust-msg" class="form-control" rows="2" placeholder="Wünsche oder Hinweise..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Zahlungsmethode</label>
+          <select id="cust-pay" class="form-control">
+            <option value="Rechnung">Rechnung</option>
+            <option value="Twint">Twint</option>
+          </select>
+        </div>
+
+        <button class="btn-submit" id="submit-btn" onclick="submitOrder()">Kostenpflichtig bestellen</button>
+        <div class="notice">🔒 Keine Kreditkarte nötig. Zahlung erfolgt nach Erhalt per Rechnung/Twint.</div>
+      </div>
+    </div>
   </div>
-</div>
 
-<script>
-(function(){
-  // Hier schickt die Seite Bestellungen hin. Leer = Vorschau ohne Versand.
-  var ORDER_URL = "/api/bestellung";
+  <footer>
+    <p id="footer-text">&copy; 2026 Site-Engine. Betrieben mit Kubernetes & GitOps.</p>
+  </footer>
 
-  var CAT = JSON.parse(document.getElementById("produkte").textContent);
-  var PROD = {}; CAT.produkte.forEach(function(p){ PROD[p.id] = p; });
-  var V = CAT.versand;
-  function chf(n){ return (Math.round(n * 100) / 100).toFixed(2).replace(/\.00$/, ".–"); }
-  function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  <script>
+    var CART = [];
+    var CATALOG = JSON.parse(document.getElementById("produkte").textContent);
 
-  // Malstation
-  var color = "#7A4E2D";
-  var pots = document.querySelectorAll(".pot");
-  pots.forEach(function(p){
-    p.addEventListener("click", function(){
-      color = p.dataset.c;
-      pots.forEach(function(o){ o.setAttribute("aria-pressed", o === p ? "true" : "false"); });
-    });
-  });
-  var parts = document.querySelectorAll(".studio .part");
-  parts.forEach(function(el){ el.addEventListener("click", function(){ el.setAttribute("fill", color); }); });
-  document.getElementById("reset").addEventListener("click", function(){
-    parts.forEach(function(el){ el.setAttribute("fill", "var(--raw)"); });
-  });
-
-  // Motive (schlichte Silhouetten als Platzhalter, bis Bilder vorhanden sind)
-  var S = 'fill="var(--raw)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"';
-  var ART = {
-    "Schlafender Fuchs": '<path '+S+' d="M14 70 C10 46 30 32 50 34 C74 36 88 52 84 70Z"/><path '+S+' d="M84 70 C98 62 96 42 82 40 C74 46 80 56 74 62"/>',
-    "Abstrakte Statue (Paar)": '<path '+S+' d="M30 90 C24 60 40 40 36 14 C50 22 52 56 46 90Z"/><path '+S+' d="M54 90 C50 64 62 46 64 22 C76 34 74 64 70 90Z"/>',
-    "Astronaut": '<circle '+S+' cx="50" cy="34" r="20"/><rect '+S+' x="38" y="26" width="24" height="14" rx="7"/><path '+S+' d="M30 90 C30 64 38 56 50 56 C62 56 70 64 70 90Z"/>',
-    "Bärenkopf": '<circle '+S+' cx="28" cy="28" r="11"/><circle '+S+' cx="72" cy="28" r="11"/><circle '+S+' cx="50" cy="54" r="30"/><ellipse '+S+' cx="50" cy="64" rx="12" ry="9"/>',
-    "Eichhörnchen": '<path '+S+' d="M60 88 C92 80 96 30 70 18 C56 14 52 32 64 40 C76 50 72 70 58 72Z"/><path '+S+' d="M30 88 C24 64 30 50 42 46 C54 44 60 60 58 88Z"/><circle '+S+' cx="40" cy="38" r="12"/>',
-    "Kristall": '<path '+S+' d="M50 10 L76 36 L64 90 L36 90 L24 36Z"/><path fill="none" stroke="var(--ink)" stroke-width="3" d="M24 36 L76 36 M50 10 L44 36 L50 90"/>',
-    "Pilzgruppe": '<path '+S+' d="M20 56 C20 34 52 34 52 56Z"/><path '+S+' d="M30 56 L30 86 L42 86 L42 56"/><path '+S+' d="M52 66 C52 48 82 48 82 66Z"/><path '+S+' d="M62 66 L62 86 L72 86 L72 66"/>',
-    "Pinguin mit Herz": '<path '+S+' d="M30 88 C22 50 34 14 50 14 C66 14 78 50 70 88Z"/><path '+S+' d="M50 54 C44 46 36 52 42 60 L50 68 L58 60 C64 52 56 46 50 54Z"/>',
-    "Schildkröte": '<path '+S+' d="M18 70 C18 40 76 36 80 70Z"/><circle '+S+' cx="86" cy="62" r="8"/><path fill="none" stroke="var(--ink)" stroke-width="3" d="M34 70 L36 52 M50 70 L50 46 M64 70 L64 52"/>'
-  };
-  // Gerenderte Bilder der echten 3D-Modelle (freigestellt); Motive ohne Bild zeigen die Skizze
-  var IMG = { "Astronaut": [
-    ["img/astronaut-1.png","schräg von vorne, unbemalt"],
-    ["img/astronaut-2.png","halb bemalt als Beispiel"],
-    ["img/astronaut-3.png","von vorne, unbemalt"] ],
-    "Schlafender Fuchs": [["img/fuchs-1.png","schräg von vorne, unbemalt"],["img/fuchs-2.png","halb bemalt als Beispiel"],["img/fuchs-3.png","von vorne, unbemalt"]],
-    "Abstrakte Statue (Paar)": [["img/statue-1.png","schräg von vorne, unbemalt"],["img/statue-2.png","halb bemalt als Beispiel"],["img/statue-3.png","von vorne, unbemalt"]],
-    "Bärenkopf": [["img/baer-1.png","schräg von vorne, unbemalt"],["img/baer-2.png","halb bemalt als Beispiel"],["img/baer-3.png","von vorne, unbemalt"]],
-    "Eichhörnchen": [["img/eichhoernchen-1.png","schräg von vorne, unbemalt"],["img/eichhoernchen-2.png","halb bemalt als Beispiel"],["img/eichhoernchen-3.png","von vorne, unbemalt"]],
-    "Kristall": [["img/kristall-1.png","schräg von vorne, unbemalt"],["img/kristall-2.png","halb bemalt als Beispiel"],["img/kristall-3.png","von vorne, unbemalt"]],
-    "Pilzgruppe": [["img/pilz-1.png","schräg von vorne, unbemalt"],["img/pilz-2.png","halb bemalt als Beispiel"],["img/pilz-3.png","von vorne, unbemalt"]],
-    "Pinguin mit Herz": [["img/pinguin-1.png","schräg von vorne, unbemalt"],["img/pinguin-2.png","halb bemalt als Beispiel"],["img/pinguin-3.png","von vorne, unbemalt"]],
-    "Schildkröte": [["img/schildkroete-1.png","schräg von vorne, unbemalt"],["img/schildkroete-2.png","halb bemalt als Beispiel"],["img/schildkroete-3.png","von vorne, unbemalt"]] };
-  var ARROW = function(d){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(d<0?'M15 5l-7 7 7 7':'M9 5l7 7-7 7')+'"/></svg>'; };
-  var gstate = {};
-  function galHtml(m){
-    var L = IMG[m], i = gstate[m] || 0, im = L[i];
-    return '<button type="button" class="gal" data-zoom="'+esc(m)+'" aria-label="'+esc(m)+' gross anzeigen"><img'+(/\.jpe?g$/.test(im[0]) ? ' class="foto"' : '')+' src="'+im[0]+'" alt="'+esc(m)+', '+esc(im[1])+'" width="960" height="960" loading="lazy"></button>' +
-      (L.length > 1 ? '<button type="button" class="gal-nav prev" data-step="-1" data-m="'+esc(m)+'" aria-label="Vorheriges Bild">'+ARROW(-1)+'</button>' +
-      '<button type="button" class="gal-nav next" data-step="1" data-m="'+esc(m)+'" aria-label="Nächstes Bild">'+ARROW(1)+'</button>' +
-      '<div class="dots" aria-hidden="true">'+L.map(function(_, k){ return '<i class="'+(k === i ? 'on' : '')+'"></i>'; }).join("")+'</div>' : '');
-  }
-  // Von Kunden bemalte Figuren (nur mit Erlaubnis zeigen). Eintrag: ["img/kunden/name.jpg", "Fuchs von Anna"]
-  var COMMUNITY = [
-    ["img/fotos/fuchs-1.jpg","Schlafender Fuchs in Regenbogenfarben"],
-    ["img/fotos/pinguin-2.jpg","Pinguin mit Herz"],
-    ["img/fotos/schildkroete-1.jpg","Schildkröte mit Metallic-Glanz"],
-    ["img/fotos/pinguin-1.jpg","Pinguin mit Herz in der Sonne"] ];
-  var CK = "Von Kunden bemalt";
-  if (COMMUNITY.length) IMG[CK] = COMMUNITY;
-  var IG = "https://www.instagram.com/sculptcolor/";
-  var communityCard = '<div class="motif community"><div class="art" data-art="'+CK+'">' +
-    (COMMUNITY.length ? galHtml(CK) :
-      '<a class="cm-empty" href="'+IG+'" target="_blank" rel="noopener"><svg viewBox="0 0 140 154" width="40" height="44" aria-hidden="true"><use href="#sc-mark"/></svg>' +
-      '<b>Bald hier: eure Figuren!</b><small>Zeig uns deine Figur mit #sculptcolor</small></a>') +
-    '</div><span>'+CK+' <a class="cm-ig" href="'+IG+'" target="_blank" rel="noopener">@sculptcolor</a></span></div>';
-  var motifsEl = document.getElementById("motifs");
-  motifsEl.innerHTML = communityCard + CAT.motive.map(function(m){
-    var art = IMG[m] ? galHtml(m) : '<svg viewBox="0 0 100 100" aria-hidden="true">'+(ART[m]||"")+'</svg>';
-    return '<div class="motif"><div class="art" data-art="'+esc(m)+'">'+art+'</div><span>'+esc(m)+'</span></div>';
-  }).join("");
-  // Kundenbilder wechseln von selbst (pausiert bei Maus/Fokus, aus bei «weniger Bewegung»)
-  var cmBox = motifsEl.querySelector('[data-art="'+CK+'"]'), cmHold = false;
-  if (cmBox && COMMUNITY.length > 1 && !matchMedia("(prefers-reduced-motion: reduce)").matches){
-    ["mouseenter","focusin"].forEach(function(ev){ cmBox.addEventListener(ev, function(){ cmHold = true; }); });
-    ["mouseleave","focusout"].forEach(function(ev){ cmBox.addEventListener(ev, function(){ cmHold = false; }); });
-    setInterval(function(){ if (!cmHold && !lb && !document.hidden){ step(CK, 1); cmBox.innerHTML = galHtml(CK); } }, 4500);
-  }
-  function step(m, d){ var n = IMG[m].length; gstate[m] = ((gstate[m] || 0) + d + n) % n; }
-  motifsEl.addEventListener("click", function(e){
-    var s = e.target.closest("[data-step]");
-    if (s){ var m = s.dataset.m; step(m, +s.dataset.step);
-      var box = s.closest("[data-art]"); box.innerHTML = galHtml(m); box.querySelector('[data-step="'+s.dataset.step+'"]').focus(); return; }
-    var z = e.target.closest("[data-zoom]"); if (z) openLb(z.dataset.zoom, z.closest(".art"));
-  });
-  // Grossansicht
-  var lb = null, lbM = null, lbFrom = null;
-  function lbRender(){
-    var L = IMG[lbM], i = gstate[lbM] || 0;
-    lb.querySelector("img").src = L[i][0]; lb.querySelector("img").alt = lbM + ", " + L[i][1];
-    lb.querySelector(".lb-cap").textContent = lbM + " · " + L[i][1] + (L.length > 1 ? "  (" + (i + 1) + "/" + L.length + ")" : "");
-  }
-  function openLb(m, artEl){
-    lbM = m; lbFrom = document.activeElement;
-    lb = document.createElement("div"); lb.className = "lightbox"; lb.setAttribute("role", "dialog"); lb.setAttribute("aria-modal", "true"); lb.setAttribute("aria-label", m + " Grossansicht");
-    var multi = IMG[m].length > 1;
-    lb.innerHTML = '<div class="lb-bg" data-lbclose></div><figure style="--lb:'+getComputedStyle(artEl).backgroundColor+'"><img src="" alt="" width="960" height="960">' +
-      '<figcaption><span class="lb-cap"></span>' + (multi ? '<span style="display:flex;gap:8px"><button type="button" class="gal-nav" style="position:static;transform:none" data-lbstep="-1" aria-label="Vorheriges Bild">'+ARROW(-1)+'</button><button type="button" class="gal-nav" style="position:static;transform:none" data-lbstep="1" aria-label="Nächstes Bild">'+ARROW(1)+'</button></span>' : '') + '</figcaption>' +
-      '<button type="button" class="lb-x" data-lbclose aria-label="Schliessen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></figure>';
-    document.body.appendChild(lb); document.body.style.overflow = "hidden"; lbRender();
-    lb.querySelector(".lb-x").focus();
-    lb.addEventListener("click", function(e){
-      if (e.target.closest("[data-lbclose]")) return closeLb();
-      var s = e.target.closest("[data-lbstep]"); if (s){ step(lbM, +s.dataset.lbstep); lbRender(); syncCard(); }
-    });
-  }
-  function syncCard(){ var box = motifsEl.querySelector('[data-art="'+lbM.replace(/"/g,'\\"')+'"]'); if (box) box.innerHTML = galHtml(lbM); }
-  function closeLb(){ if (!lb) return; lb.remove(); lb = null; document.body.style.overflow = ""; if (lbFrom && lbFrom.isConnected) lbFrom.focus(); }
-  document.addEventListener("keydown", function(e){
-    if (!lb) return;
-    if (e.key === "Escape") closeLb();
-    else if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && IMG[lbM].length > 1){ step(lbM, e.key === "ArrowRight" ? 1 : -1); lbRender(); syncCard(); }
-  });
-
-  // Produkte: Preise aus dem Katalog, Motivauswahl
-  var options = '<option value="">Motiv wählen …</option>' + CAT.motive.map(function(m){ return '<option>'+esc(m)+'</option>'; }).join("");
-  document.querySelectorAll("[data-product]").forEach(function(card){
-    var p = PROD[card.dataset.product]; if (!p) return;
-    card.querySelector("[data-price]").textContent = p.preis;
-    var box = card.querySelector("[data-selects]"), html = "";
-    for (var i = 1; i <= p.motive; i++){
-      var id = "m-" + p.id + "-" + i;
-      html += '<label class="field" for="'+id+'"><span>'+(p.motive > 1 ? "Motiv " + i : "Motiv")+'</span><select id="'+id+'">'+options+'</select></label>';
-    }
-    box.innerHTML = html;
-    if (box.parentNode.classList.contains("buy")) box.style.flex = "1 1 200px";
-    card.querySelector("[data-add]").addEventListener("click", function(){
-      var sels = box.querySelectorAll("select"), ms = [], msg = card.querySelector("[data-added]");
-      for (var k = 0; k < sels.length; k++){
-        if (!sels[k].value){ sels[k].focus(); msg.style.color = "var(--error)"; msg.textContent = "Bitte zuerst ein Motiv wählen."; return; }
-        ms.push(sels[k].value);
-      }
-      add(p.id, ms);
-      msg.style.color = ""; msg.textContent = "Im Warenkorb ✓";
-      setTimeout(function(){ msg.textContent = ""; }, 2500);
-    });
-  });
-
-  // Warenkorb
-  var cart = [];
-  try { cart = JSON.parse(localStorage.getItem("sc-cart") || "[]").filter(function(l){ return PROD[l.id]; }); } catch(e){ cart = []; }
-  function save(){ try { localStorage.setItem("sc-cart", JSON.stringify(cart)); } catch(e){} }
-  function add(id, ms){
-    var key = id + "|" + ms.join("|");
-    var hit = cart.filter(function(l){ return l.id + "|" + l.motive.join("|") === key; })[0];
-    if (hit) hit.qty = Math.min(20, hit.qty + 1); else cart.push({ id: id, motive: ms, qty: 1 });
-    save(); render();
-  }
-  function calc(){
-    var sub = 0, sets = 0, n = 0;
-    cart.forEach(function(l){ var p = PROD[l.id]; sub += p.preis * l.qty; n += l.qty; if (p.set) sets += l.qty; });
-    var free = sub >= V.gratis_ab_betrag;
-    var ship = n === 0 ? 0 : (free ? 0 : V.preis);
-    return { sub: sub, sets: sets, n: n, ship: ship, total: sub + ship, free: free };
-  }
-  var list = document.getElementById("cart-list");
-  function render(){
-    var c = calc();
-    document.querySelectorAll("[data-count]").forEach(function(el){ el.textContent = c.n; });
-    document.getElementById("fab").hidden = c.n === 0;
-    document.getElementById("fab-total").textContent = chf(c.total);
-    document.getElementById("cart-empty").hidden = c.n > 0;
-    document.getElementById("cart-filled").hidden = c.n === 0;
-    list.innerHTML = cart.map(function(l, i){
-      var p = PROD[l.id];
-      return '<li class="line"><span class="t">'+esc(p.name)+' · '+esc(p.groesse)+'</span><span class="amt">CHF '+chf(p.preis * l.qty)+'</span>' +
-        (l.motive.length ? '<span class="m">'+esc(l.motive.join(", "))+'</span>' : '') +
-        '<div class="qty"><button type="button" data-dec="'+i+'" aria-label="Eins weniger">−</button><output aria-label="Menge">'+l.qty+'</output><button type="button" data-inc="'+i+'" aria-label="Eins mehr">+</button><button type="button" class="rm" data-rm="'+i+'">Entfernen</button></div></li>';
-    }).join("");
-    document.getElementById("cart-sum").innerHTML =
-      '<dt>Zwischensumme</dt><dd>CHF '+chf(c.sub)+'</dd>' +
-      '<dt>Versand</dt><dd>'+(c.ship === 0 ? "gratis" : "CHF " + chf(c.ship))+'</dd>' +
-      '<dt class="total">Total</dt><dd class="total">CHF '+chf(c.total)+'</dd>';
-    var hint = document.getElementById("ship-hint");
-    if (c.n > 0 && !c.free){
-      var rest = V.gratis_ab_betrag - c.sub;
-      hint.hidden = false;
-      var tip = rest <= PROD.sticker.preis ? "sticker" : rest <= PROD.farbkette.preis ? "farbkette" : "";
-      if (tip === "sticker") hint.innerHTML = "<span>Nur noch CHF " + chf(rest) + " bis zum Gratisversand. Mit dem <b>Sticker-Set</b> (5 Logo-Sticker, CHF " + chf(PROD.sticker.preis) + ") sparst du CHF " + chf(V.preis) + " Porto.</span><button class=\"mini\" type=\"button\" data-quick=\"sticker\">Sticker-Set hinzufügen</button>";
-      else if (tip === "farbkette") hint.innerHTML = "<span>Noch CHF " + chf(rest) + " bis zum Gratisversand. Eine zusätzliche <b>Farbkette</b> (CHF " + chf(PROD.farbkette.preis) + ") passt genau, und du sparst CHF " + chf(V.preis) + " Porto.</span><button class=\"mini\" type=\"button\" data-quick=\"farbkette\">Farbkette hinzufügen</button>";
-      else hint.textContent = "Noch CHF " + chf(rest) + ", dann ist der Versand gratis.";
-    } else hint.hidden = true;
-    document.getElementById("submit").textContent = "Bestellung absenden · CHF " + chf(c.total);
-  }
-  document.getElementById("ship-hint").addEventListener("click", function(e){
-    var b = e.target.closest("[data-quick]"); if (b) add(b.dataset.quick, []);
-  });
-  list.addEventListener("click", function(e){
-    var b = e.target.closest("button"); if (!b) return;
-    if (b.dataset.inc) cart[+b.dataset.inc].qty = Math.min(20, cart[+b.dataset.inc].qty + 1);
-    else if (b.dataset.dec){ var l = cart[+b.dataset.dec]; l.qty -= 1; if (l.qty < 1) cart.splice(+b.dataset.dec, 1); }
-    else if (b.dataset.rm) cart.splice(+b.dataset.rm, 1);
-    save(); render();
-  });
-
-  // Schublade öffnen und schliessen
-  var drawer = document.getElementById("drawer"), lastFocus = null;
-  function openCart(){ lastFocus = document.activeElement;
-    if (!document.getElementById("done").hidden && calc().n === 0){ document.getElementById("done").hidden = true; document.getElementById("cart-main").hidden = false; } drawer.hidden = false; document.body.style.overflow = "hidden"; drawer.querySelector(".x").focus(); }
-  function closeCart(){ drawer.hidden = true; document.body.style.overflow = ""; if (lastFocus && lastFocus.focus) lastFocus.focus(); }
-  document.querySelectorAll("[data-open-cart]").forEach(function(b){ b.addEventListener("click", openCart); });
-  drawer.addEventListener("click", function(e){ if (e.target.closest("[data-close]")) closeCart(); });
-  document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !drawer.hidden) closeCart(); });
-
-  // Rechtliches aufklappen
-  document.querySelectorAll("[data-legal]").forEach(function(a){
-    a.addEventListener("click", function(){
-      var d = document.getElementById(a.getAttribute("href").slice(1));
-      if (d){ d.open = true; if (!drawer.hidden) closeCart(); setTimeout(function(){ d.scrollIntoView({ block: "start" }); }, 0); }
-    });
-  });
-
-  // E-Mail kopieren
-  document.getElementById("copymail").addEventListener("click", function(){
-    var b = this, t = document.getElementById("mail").textContent;
-    function ok(){ b.textContent = "Kopiert"; setTimeout(function(){ b.textContent = "Kopieren"; }, 2000); }
-    function sel(){ var r = document.createRange(); r.selectNodeContents(document.getElementById("mail")); var s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "Markiert"; }
-    try { navigator.clipboard.writeText(t).then(ok, sel); } catch(e){ sel(); }
-  });
-
-  // Bestellung absenden
-  var form = document.getElementById("checkout"), err = document.getElementById("form-err"), btn = document.getElementById("submit");
-  function fail(msg, el){ err.hidden = false; err.textContent = msg; if (el) el.focus(); }
-  form.addEventListener("submit", function(e){
-    e.preventDefault(); err.hidden = true;
-    if (!cart.length) return fail("Dein Warenkorb ist leer.");
-    var f = form.elements;
-    var checks = [
-      [f.name, "Bitte gib deinen Namen ein."],
-      [f.email, "Bitte prüfe deine E-Mail-Adresse."],
-      [f.strasse, "Bitte gib Strasse und Hausnummer ein."],
-      [f.plz, "Bitte gib eine Schweizer Postleitzahl mit 4 Ziffern ein."],
-      [f.ort, "Bitte gib den Ort ein."],
-      [f.agb, "Bitte bestätige, dass du die AGB gelesen hast."]
-    ];
-    for (var i = 0; i < checks.length; i++){ if (!checks[i][0].checkValidity()) return fail(checks[i][1], checks[i][0]); }
-    var payload = {
-      items: cart.map(function(l){ return { id: l.id, motive: l.motive, qty: l.qty }; }),
-      kunde: { name: f.name.value.trim(), email: f.email.value.trim(), telefon: f.telefon.value.trim(), strasse: f.strasse.value.trim(), plz: f.plz.value.trim(), ort: f.ort.value.trim() },
-      zahlung: form.querySelector("input[name=zahlung]:checked").value,
-      nachricht: f.nachricht.value.trim(),
-      agb: f.agb.checked,
-      website: f.website.value
-    };
-    if (!ORDER_URL) return showDone(null, payload);
-    btn.disabled = true; btn.textContent = "Wird gesendet …";
-    fetch(ORDER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-      .then(function(r){ return r.json().catch(function(){ return { ok: false }; }); })
-      .then(function(res){
-        if (res.ok){ showDone(res.bestellnummer, payload); cart = []; save(); render(); }
-        else { fail(res.fehler || "Die Bestellung konnte nicht gesendet werden. Bitte versuch es nochmals oder schreib an sculptcolor@gmail.com."); }
+    // Konfiguration vom Server abfragen (falls dynamisch geladen)
+    fetch('/api/config')
+      .then(r => r.ok ? r.json() : CATALOG)
+      .then(cfg => {
+        if (cfg && cfg.produkte) {
+          CATALOG = cfg;
+          if (cfg.shop_name) {
+            document.getElementById("brand-name").textContent = cfg.shop_name;
+            document.getElementById("hero-title").textContent = cfg.shop_name;
+          }
+          if (cfg.shop_tagline) {
+            document.getElementById("hero-tagline").textContent = cfg.shop_tagline;
+          }
+          renderProducts();
+        }
       })
-      .catch(function(){ fail("Keine Verbindung zum Shop. Prüfe deine Internetverbindung und versuch es nochmals."); })
-      .then(function(){ btn.disabled = false; render(); });
-  });
+      .catch(() => renderProducts());
 
-  function showDone(nr, p){
-    var c = calc(), done = document.getElementById("done");
-    var lines = p.items.map(function(l){ var pr = PROD[l.id]; return l.qty + " × " + pr.name + " " + pr.groesse + (l.motive.length ? " – " + l.motive.join(", ") : "") + "   CHF " + chf(pr.preis * l.qty); }).join("\n");
-    var summary = lines + "\n\nVersand: " + (c.ship ? "CHF " + chf(c.ship) : "gratis") + "\nTotal: CHF " + chf(c.total) + "\n\n" + p.kunde.name + "\n" + p.kunde.strasse + "\n" + p.kunde.plz + " " + p.kunde.ort + "\nZahlung: " + p.zahlung;
-    if (nr){
-      done.innerHTML = '<p class="eyebrow">Bestellung '+esc(nr)+'</p><p class="big">Danke, '+esc(p.kunde.name.split(" ")[0])+'!</p><p>Wir haben deine Bestellung erhalten und dir eine Bestätigung an '+esc(p.kunde.email)+' geschickt. Die '+(p.zahlung === "Twint" ? "Twint-Anfrage" : "Rechnung")+' folgt per E-Mail.</p><pre>'+esc(summary)+'</pre><button class="btn" type="button" data-close>Schliessen</button>';
-    } else {
-      done.innerHTML = '<p class="preview">Vorschau: Auf deinem Raspberry Pi geht diese Bestellung als E-Mail an sculptcolor@gmail.com, und die Kundin oder der Kunde erhält eine Bestätigung.</p><p class="big">Danke, '+esc(p.kunde.name.split(" ")[0])+'!</p><pre>'+esc(summary)+'</pre><button class="btn" type="button" id="back">Zurück zum Warenkorb</button>';
-      done.querySelector("#back").addEventListener("click", function(){ done.hidden = true; document.getElementById("cart-main").hidden = false; });
+    function renderProducts() {
+      var grid = document.getElementById("product-grid");
+      grid.innerHTML = "";
+      var curr = CATALOG.currency || "CHF";
+      (CATALOG.produkte || []).forEach(p => {
+        var card = document.createElement("div");
+        card.className = "card";
+        var motiveSelect = "";
+        if (p.motive && p.motive > 0 && CATALOG.motive) {
+          motiveSelect = `<select id="motive-${p.id}" class="form-control" style="margin-bottom:0.75rem;">` +
+            CATALOG.motive.map(m => `<option value="${m}">${m}</option>`).join("") +
+            `</select>`;
+        }
+        card.innerHTML = `
+          <img src="img/placeholder.svg" alt="${p.name}">
+          <div class="card-body">
+            <h3 class="card-title">${p.name}</h3>
+            <p class="card-desc">${p.groesse || 'Standard-Ausführung'}</p>
+            ${motiveSelect}
+            <div class="card-footer">
+              <span class="price">${curr} ${p.preis.toFixed(2)}</span>
+              <button class="add-btn" onclick="addToCart('${p.id}')">+ Hinzufügen</button>
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
     }
-    document.getElementById("cart-main").hidden = true;
-    done.hidden = false;
-    if (nr) form.reset();
-  }
 
-  render();
-})();
-</script>
+    function addToCart(pid) {
+      var prod = (CATALOG.produkte || []).find(p => p.id === pid);
+      if (!prod) return;
+      var motive = [];
+      var mEl = document.getElementById("motive-" + pid);
+      if (mEl) motive.push(mEl.value);
 
+      var existing = CART.find(item => item.id === pid && JSON.stringify(item.motive) === JSON.stringify(motive));
+      if (existing) {
+        existing.qty++;
+      } else {
+        CART.push({ id: pid, name: prod.name, preis: prod.preis, groesse: prod.groesse, qty: 1, motive: motive });
+      }
+      updateCartBadge();
+      openCart();
+    }
 
+    function updateCartBadge() {
+      var count = CART.reduce((sum, item) => sum + item.qty, 0);
+      document.getElementById("cart-count").textContent = count;
+    }
 
-</body></html>
+    function openCart() {
+      renderCartItems();
+      document.getElementById("cart-modal").classList.add("open");
+    }
+
+    function closeCart() {
+      document.getElementById("cart-modal").classList.remove("open");
+    }
+
+    function renderCartItems() {
+      var container = document.getElementById("cart-items");
+      var form = document.getElementById("checkout-form");
+      var curr = CATALOG.currency || "CHF";
+      if (CART.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding: 1rem 0;">Dein Warenkorb ist leer.</p>';
+        form.style.display = "none";
+        return;
+      }
+      form.style.display = "block";
+      var subtotal = 0;
+      var html = "";
+      CART.forEach((item, idx) => {
+        var total = item.preis * item.qty;
+        subtotal += total;
+        var mStr = item.motive && item.motive.length ? ` <small style="color:var(--text-muted)">(${item.motive.join(', ')})</small>` : '';
+        html += `
+          <div class="cart-item">
+            <div>
+              <strong>${item.name}</strong>${mStr}<br>
+              <small>${item.qty} × ${curr} ${item.preis.toFixed(2)}</small>
+            </div>
+            <div>
+              <strong>${curr} ${total.toFixed(2)}</strong>
+              <button onclick="removeItem(${idx})" style="background:none;border:none;color:#ef4444;margin-left:0.5rem;cursor:pointer;">&times;</button>
+            </div>
+          </div>
+        `;
+      });
+
+      var vRule = CATALOG.versand || { preis: 0, gratis_ab_betrag: 0 };
+      var shipping = subtotal >= vRule.gratis_ab_betrag ? 0 : vRule.preis;
+      var total = subtotal + shipping;
+
+      html += `
+        <div style="margin-top: 1rem; text-align: right; font-size: 0.95rem;">
+          <div>Zwischensumme: <strong>${curr} ${subtotal.toFixed(2)}</strong></div>
+          <div>Versand: <strong>${shipping === 0 ? 'Gratis' : curr + ' ' + shipping.toFixed(2)}</strong></div>
+          <div style="font-size: 1.15rem; margin-top: 0.5rem;">Gesamttotal: <strong>${curr} ${total.toFixed(2)}</strong></div>
+        </div>
+      `;
+      container.innerHTML = html;
+    }
+
+    function removeItem(idx) {
+      CART.splice(idx, 1);
+      updateCartBadge();
+      renderCartItems();
+    }
+
+    function submitOrder() {
+      var btn = document.getElementById("submit-btn");
+      var name = document.getElementById("cust-name").value.trim();
+      var adresse = document.getElementById("cust-adresse").value.trim();
+      var plz = document.getElementById("cust-plz").value.trim();
+      var email = document.getElementById("cust-email").value.trim();
+      var phone = document.getElementById("cust-phone").value.trim();
+      var msg = document.getElementById("cust-msg").value.trim();
+      var pay = document.getElementById("cust-pay").value;
+      var website = document.getElementById("cust-website").value; // Honeypot
+
+      if (!name || !adresse || !plz || !email) {
+        alert("Bitte fülle alle Pflichtfelder (Name, Adresse, PLZ/Ort, E-Mail) aus.");
+        return;
+      }
+
+      var payload = {
+        website: website,
+        kunde: { name: name, adresse: adresse, plz_ort: plz, email: email, telefon: phone },
+        positionen: CART.map(i => ({ id: i.id, qty: i.qty, motive: i.motive })),
+        nachricht: msg,
+        zahlung: pay
+      };
+
+      btn.disabled = true;
+      btn.textContent = "Wird übermittelt...";
+
+      fetch("/api/bestellung", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(r => r.json().then(data => ({ ok: r.ok, data: data })))
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(res.data.error || "Fehler beim Absenden.");
+        }
+        CART = [];
+        updateCartBadge();
+        document.getElementById("cart-items").innerHTML = `
+          <div style="text-align:center; padding: 2rem 0;">
+            <div style="font-size: 3rem; margin-bottom: 0.5rem;">🎉</div>
+            <h3>Vielen Dank für deine Bestellung!</h3>
+            <p style="margin: 0.75rem 0; color:var(--text-muted);">Deine Bestellnummer: <strong>${res.data.bestellnummer}</strong></p>
+            <p style="font-size:0.9rem;">Eine Bestätigung wurde an <strong>${email}</strong> gesendet.</p>
+          </div>
+        `;
+        document.getElementById("checkout-form").style.display = "none";
+      })
+      .catch(err => {
+        alert("Fehler: " + err.message);
+        btn.disabled = false;
+        btn.textContent = "Kostenpflichtig bestellen";
+      });
+    }
+  </script>
+</body>
+</html>

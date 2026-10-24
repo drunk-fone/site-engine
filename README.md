@@ -62,3 +62,4 @@ DATA_DIR=../data python3 server.py
 # Öffne http://localhost:8080
 ```
 Bestellungen landen direkt in `../data/bestellungen.csv` und `../data/bestellungen.jsonl`.
+
