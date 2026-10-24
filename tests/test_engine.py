@@ -127,33 +127,33 @@ class TestSiteEngineSecurity(unittest.TestCase):
         # When exceeding 1000 IPs, expired IPs are pruned
         self.assertLessEqual(len(server.RATES), 1200)
 
-    def test_sculptcolor_checkout_format_and_zip_import(self):
+    def test_custom_checkout_format_and_zip_import(self):
         import io, zipfile
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("sculptcolor-k8s/app/public/index.html", '''<!doctype html><html><head>
+            zf.writestr("shop-template/app/public/index.html", '''<!doctype html><html><head>
 <script id="produkte" type="application/json">
-{"versand":{"preis":9,"gratis_ab_betrag":60},"motive":["Schlafender Fuchs"],"produkte":[{"id":"set-klein","name":"Set klein","groesse":"6 cm","preis":24,"motive":1,"set":true}]}
-</script></head><body>Sculptcolor</body></html>''')
-            zf.writestr("sculptcolor-k8s/app/public/img/fuchs-1.png", b"PNGDATA")
-            zf.writestr("sculptcolor-k8s/app/public/evil.php", b"<?php system($_GET['c']); ?>")
-            zf.writestr("sculptcolor-k8s/app/public/../../escape.html", b"bad")
+{"versand":{"preis":9,"gratis_ab_betrag":60},"motive":["Motiv A"],"produkte":[{"id":"set-klein","name":"Set klein","groesse":"6 cm","preis":24,"motive":1,"set":true}]}
+</script></head><body>Testshop</body></html>''')
+            zf.writestr("shop-template/app/public/img/item-1.png", b"PNGDATA")
+            zf.writestr("shop-template/app/public/evil.php", b"<?php system($_GET['c']); ?>")
+            zf.writestr("shop-template/app/public/../../escape.html", b"bad")
 
         count = server.import_zip_bytes(buf.getvalue())
         self.assertEqual(count, 2)
         self.assertTrue((server.custom_public_dir() / "index.html").is_file())
-        self.assertTrue((server.custom_public_dir() / "img" / "fuchs-1.png").is_file())
+        self.assertTrue((server.custom_public_dir() / "img" / "item-1.png").is_file())
         self.assertFalse((server.custom_public_dir() / "evil.php").exists())
 
         payload = {
-            "items": [{"id": "set-klein", "motive": ["Schlafender Fuchs"], "qty": 1}],
+            "items": [{"id": "set-klein", "motive": ["Motiv A"], "qty": 1}],
             "kunde": {
-                "name": "Dominique Fankhauser",
-                "email": "sculptcolor@gmail.com",
+                "name": "Max Muster",
+                "email": "max@example.com",
                 "telefon": "",
-                "strasse": "Eschenrain 49",
-                "plz": "2540",
-                "ort": "Grenchen",
+                "strasse": "Musterstrasse 1",
+                "plz": "8000",
+                "ort": "Zürich",
             },
             "zahlung": "Twint",
             "nachricht": "Test",
@@ -164,7 +164,7 @@ class TestSiteEngineSecurity(unittest.TestCase):
         self.assertEqual(order["zwischensumme"], 24)
         self.assertEqual(order["versand"], 9)
         self.assertEqual(order["total"], 33)
-        self.assertEqual(order["kunde"]["plz_ort"], "2540 Grenchen")
+        self.assertEqual(order["kunde"]["plz_ort"], "8000 Zürich")
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,7 @@ import base64
 import csv
 import datetime as dt
 import fcntl
+import hashlib
 import hmac
 import io
 import json
@@ -38,7 +39,7 @@ DATA_DIR = Path(ENV("DATA_DIR", "/data")).resolve()
 TESTMODUS = ENV("TESTMODUS", "1") == "1"
 TRUST_PROXY = ENV("TRUST_PROXY", "1") == "1"
 ADMIN_USER = ENV("ADMIN_USER", "admin")
-ADMIN_PASSWORD = ENV("ADMIN_PASSWORD", "admin" if TESTMODUS else "")
+ADMIN_PASSWORD = ENV("ADMIN_PASSWORD", "")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("site-engine")
@@ -109,12 +110,12 @@ def reload_catalog():
 
 
 # Einstellungen: Umgebungsvariable überschreibt site.json, Fallback auf Standardwert
-SHOP_NAME = ENV("SHOP_NAME", CAT.get("shop_name", "Sculptcolor"))
-SHOP_URL = ENV("SHOP_URL", CAT.get("shop_url", "https://sculptcolor.ch"))
-SHOP_ADDRESS = ENV("SHOP_ADDRESS", CAT.get("shop_address", "Eschenrain 49, 2540 Grenchen"))
+SHOP_NAME = ENV("SHOP_NAME", CAT.get("shop_name", "Shop"))
+SHOP_URL = ENV("SHOP_URL", CAT.get("shop_url", "https://example.com"))
+SHOP_ADDRESS = ENV("SHOP_ADDRESS", CAT.get("shop_address", ""))
 CURRENCY = ENV("CURRENCY", CAT.get("currency", "CHF"))
-ORDER_PREFIX = ENV("ORDER_PREFIX", CAT.get("order_prefix", "SC-W"))
-MAIL_TO = ENV("MAIL_TO", CAT.get("contact_email", "sculptcolor@gmail.com"))
+ORDER_PREFIX = ENV("ORDER_PREFIX", CAT.get("order_prefix", "ORD"))
+MAIL_TO = ENV("MAIL_TO", CAT.get("contact_email", "admin@example.com"))
 SMTP_HOST = ENV("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(ENV("SMTP_PORT", "465"))
 SMTP_USER = ENV("SMTP_USER", "")
@@ -152,7 +153,7 @@ def validate(payload):
         raise Fehler("Bitte bestätige die AGB.")
 
     k = payload.get("kunde") or {}
-    # Unterstützt sowohl {adresse, plz_ort} als auch {strasse, plz, ort} (Sculptcolor index.html)
+    # Unterstützt sowohl {adresse, plz_ort} als auch {strasse, plz, ort}
     strasse = clean(k.get("strasse") or k.get("adresse"), 120)
     plz = clean(k.get("plz"), 10)
     ort = clean(k.get("ort"), 80)
@@ -446,7 +447,7 @@ def import_zip_bytes(raw_bytes: bytes) -> int:
             norm = info.filename.replace("\\", "/").lstrip("/")
             if ".." in norm.split("/"):
                 continue
-            # Erkenne public/-Unterpfad im ZIP (z. B. sculptcolor-k8s/app/public/...)
+            # Erkenne public/-Unterpfad im ZIP (z. B. template/app/public/...)
             rel_pub = None
             if "/app/public/" in norm:
                 rel_pub = norm.split("/app/public/", 1)[1]
@@ -543,8 +544,10 @@ class Handler(BaseHTTPRequestHandler):
                   {"Cache-Control": "no-store"})
 
     def check_admin_auth(self) -> bool:
+        expected_user = ENV("ADMIN_USER", ADMIN_USER)
         expected_pw = ENV("ADMIN_PASSWORD", ADMIN_PASSWORD)
-        if not expected_pw:
+        expected_hash = ENV("ADMIN_PASSWORD_HASH", "")
+        if not expected_pw and not expected_hash:
             return False
         auth = self.headers.get("Authorization", "")
         if not auth.startswith("Basic "):
@@ -554,7 +557,15 @@ class Handler(BaseHTTPRequestHandler):
             user, pw = raw.split(":", 1)
         except Exception:
             return False
-        return hmac.compare_digest(user, ADMIN_USER) and hmac.compare_digest(pw, expected_pw)
+        if not hmac.compare_digest(user, expected_user):
+            return False
+        if expected_hash and "$" in expected_hash:
+            salt, digest = expected_hash.split("$", 1)
+            calc = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+            return hmac.compare_digest(calc, digest)
+        if expected_pw:
+            return hmac.compare_digest(pw, expected_pw)
+        return False
 
     def require_admin(self) -> bool:
         if self.check_admin_auth():
