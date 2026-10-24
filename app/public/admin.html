@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Shop-Administration · Site-Engine</title>
+  <style>
+    :root {
+      --bg: #f4f7f8; --card: #ffffff; --ink: #1d2426; --muted: #56656a;
+      --line: #dce5e6; --primary: #0098a6; --accent: #d6336c; --ok: #1b7f4b; --err: #b3261e;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 400 15px/1.5 system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--ink); }
+    header { background: var(--ink); color: #fff; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    header a { color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,.35); padding: 6px 14px; border-radius: 999px; font-size: .9rem; }
+    .wrap { max-width: 1120px; margin: 24px auto; padding: 0 16px 64px; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 2px solid var(--line); padding-bottom: 12px; }
+    .tab { border: 1.5px solid var(--line); background: var(--card); color: var(--ink); padding: 9px 18px; border-radius: 999px; font-weight: 600; cursor: pointer; font-size: .95rem; }
+    .tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; margin-bottom: 20px; }
+    .card h2 { margin: 0 0 8px; font-size: 1.2rem; }
+    .card p.sub { margin: 0 0 16px; color: var(--muted); font-size: .92rem; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 999px; border: 1.5px solid var(--ink); background: var(--card); color: var(--ink); font-weight: 600; cursor: pointer; font-size: .92rem; text-decoration: none; }
+    .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .btn.danger { border-color: var(--err); color: var(--err); }
+    table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { color: var(--muted); font-weight: 600; font-size: .82rem; text-transform: uppercase; letter-spacing: .05em; }
+    input[type="text"], input[type="number"], select, textarea {
+      width: 100%; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 8px; font: inherit; color: var(--ink); background: #fff;
+    }
+    textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; min-height: 420px; white-space: pre; }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 14px; margin-top: 16px; }
+    .img-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--bg); display: grid; gap: 8px; font-size: .82rem; }
+    .img-card img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 8px; }
+    .img-card code { word-break: break-all; font-size: .78rem; }
+    .dropzone { border: 2px dashed var(--primary); border-radius: 14px; padding: 28px; text-align: center; background: #f0fafb; cursor: pointer; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 12px; background: var(--ink); color: #fff; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.2); z-index: 100; }
+    .toast.ok { background: var(--ok); }
+    .toast.err { background: var(--err); }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚙️ Shop-Administration</h1>
+    <div style="display:flex;gap:10px;align-items:center">
+      <a href="/api/admin/backup.zip">Backup (.zip)</a>
+      <a href="/" target="_blank">Webseite öffnen ↗</a>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="tabs">
+      <button class="tab active" data-tab="katalog">1. Produkte, Preise & Motive</button>
+      <button class="tab" data-tab="bilder">2. Bilder & Fotos</button>
+      <button class="tab" data-tab="import">3. ZIP-Import & HTML-Editor</button>
+      <button class="tab" data-tab="bestellungen">4. Bestellungen</button>
+    </div>
+
+    <!-- TAB 1: KATALOG -->
+    <div id="tab-katalog" class="tab-pane">
+      <div class="card">
+        <h2>Produkte & Preise</h2>
+        <p class="sub">Änderungen hier aktualisieren sofort die Preise im Shop und auf der Webseite.</p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Grösse / Zusatz</th>
+                <th>Preis (CHF)</th>
+                <th>Motive wählbar</th>
+                <th>Set?</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="prod-rows"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px">
+          <button class="btn" type="button" id="add-prod">+ Produkt hinzufügen</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Versand & Motive</h2>
+        <div class="grid2">
+          <label><span>Versandkosten (CHF)</span><input type="number" step="0.5" id="v-preis"></label>
+          <label><span>Gratis Versand ab (CHF)</span><input type="number" step="1" id="v-gratis"></label>
+        </div>
+        <div style="margin-top:16px">
+          <label><span>Verfügbare Motive (ein Motiv pro Zeile)</span>
+            <textarea id="motive-list" rows="8" style="margin-top:6px"></textarea>
+          </label>
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn primary" type="button" id="save-catalog">Katalog & Preise speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: BILDER -->
+    <div id="tab-bilder" class="tab-pane" hidden>
+      <div class="card">
+        <h2>Bilder hochladen</h2>
+        <p class="sub">Lade Produktbilder (<code>img/</code>) oder Kundenfotos (<code>img/fotos/</code>) hoch. Bestehende Dateien mit gleichem Namen werden ersetzt.</p>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <label style="display:flex;align-items:center;gap:8px">
+            <span>Zielordner:</span>
+            <select id="img-folder" style="width:auto">
+              <option value="img">img/ (Produkt- & Motivbilder)</option>
+              <option value="img/fotos">img/fotos/ (Kundenfotos / Galerie)</option>
+            </select>
+          </label>
+          <input type="file" id="img-input" multiple accept=".png,.jpg,.jpeg,.svg,.webp,.gif">
+          <button class="btn primary" type="button" id="upload-img-btn">Hochladen</button>
+        </div>
+        <div id="img-grid" class="img-grid"></div>
+      </div>
+
+      <div class="card">
+        <h2>Kundenfotos-Karussell («Von Kunden bemalt»)</h2>
+        <p class="sub">Wähle aus den hochgeladenen Bildern aus, welche Fotos im Karussell auf der Webseite erscheinen sollen.</p>
+        <table>
+          <thead><tr><th>Bilddatei</th><th>Beschreibung / Bildunterschrift</th><th></th></tr></thead>
+          <tbody id="com-rows"></tbody>
+        </table>
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" type="button" id="add-com">+ Kundenfoto-Eintrag hinzufügen</button>
+          <button class="btn primary" type="button" id="save-galleries">Bild-Zuordnungen speichern</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Motiv-Bilder zuordnen</h2>
+        <p class="sub">Ordne jedem Motiv im Shop seine Bilder zu (jeweils <code>Bildpfad | Beschreibung</code> pro Zeile).</p>
+        <div id="motif-img-list" style="display:grid;gap:14px"></div>
+        <div style="margin-top:16px">
+          <button class="btn primary" type="button" id="save-galleries-2">Motiv-Bilder speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: ZIP-IMPORT & HTML -->
+    <div id="tab-import" class="tab-pane" hidden>
+      <div class="card">
+        <h2>📦 1-Klick Kunden-ZIP importieren</h2>
+        <p class="sub">Ziehe das Kunden-ZIP (z. B. <code>sculptcolor-k8s.zip</code>) hierher. <code>index.html</code> und alle Bilder in <code>img/</code> werden automatisch auf das persistente Volume übernommen.</p>
+        <div class="dropzone" id="zip-drop">
+          <p style="margin:0 0 10px;font-weight:600">ZIP-Datei hier ablegen oder auswählen</p>
+          <input type="file" id="zip-input" accept=".zip">
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Direkter HTML-Editor (<code>index.html</code>)</h2>
+        <p class="sub">Hier kannst du sämtliche Texte, Abschnitte und das Design der <code>index.html</code> direkt im Browser bearbeiten.</p>
+        <textarea id="html-editor" class="code"></textarea>
+        <div style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap">
+          <button class="btn primary" type="button" id="save-html">index.html speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: BESTELLUNGEN -->
+    <div id="tab-bestellungen" class="tab-pane" hidden>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+          <div>
+            <h2 style="margin:0">Eingegangene Bestellungen</h2>
+            <p class="sub" style="margin:4px 0 0">Alle Bestellungen auf dem persistenten Speicher.</p>
+          </div>
+          <a class="btn primary" href="/api/admin/orders.csv">CSV herunterladen</a>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Nr.</th>
+                <th>Datum</th>
+                <th>Kunde</th>
+                <th>Adresse</th>
+                <th>Artikel</th>
+                <th>Zahlung</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="order-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script>
+    function toast(msg, type) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + (type || 'ok');
+      t.hidden = false;
+      setTimeout(function() { t.hidden = true; }, 3500);
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+      });
+    }
+
+    // Tabs
+    document.querySelectorAll('.tab').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab').forEach(function(b) { b.classList.toggle('active', b === btn); });
+        document.querySelectorAll('.tab-pane').forEach(function(p) {
+          p.hidden = p.id !== 'tab-' + btn.dataset.tab;
+        });
+      });
+    });
+
+    var STATE = { catalog: { produkte: [], motive: [], versand: { preis: 9, gratis_ab_betrag: 60 } }, images: [], html: '' };
+
+    function renderCatalog() {
+      var tbody = document.getElementById('prod-rows');
+      tbody.innerHTML = (STATE.catalog.produkte || []).map(function(p, idx) {
+        var price = p.preis != null ? p.preis : (p.price || 0);
+        return '<tr data-idx="' + idx + '">' +
+          '<td><input type="text" data-f="id" value="' + esc(p.id) + '"></td>' +
+          '<td><input type="text" data-f="name" value="' + esc(p.name) + '"></td>' +
+          '<td><input type="text" data-f="groesse" value="' + esc(p.groesse || '') + '"></td>' +
+          '<td><input type="number" step="0.5" data-f="preis" value="' + esc(price) + '"></td>' +
+          '<td><input type="number" min="0" max="10" data-f="motive" value="' + esc(p.motive || 0) + '"></td>' +
+          '<td><input type="checkbox" data-f="set"' + (p.set ? ' checked' : '') + '></td>' +
+          '<td><button type="button" class="btn danger" data-del-prod="' + idx + '">✕</button></td>' +
+        '</tr>';
+      }).join('');
+      var v = STATE.catalog.versand || { preis: 9, gratis_ab_betrag: 60 };
+      document.getElementById('v-preis').value = v.preis != null ? v.preis : 9;
+      document.getElementById('v-gratis').value = v.gratis_ab_betrag != null ? v.gratis_ab_betrag : 60;
+      document.getElementById('motive-list').value = (STATE.catalog.motive || []).join('\n');
+    }
+
+    function collectCatalogFromForm() {
+      var rows = document.querySelectorAll('#prod-rows tr');
+      var produkte = [];
+      rows.forEach(function(r) {
+        var id = r.querySelector('[data-f="id"]').value.trim();
+        var name = r.querySelector('[data-f="name"]').value.trim();
+        if (!id || !name) return;
+        var item = {
+          id: id,
+          name: name,
+          groesse: r.querySelector('[data-f="groesse"]').value.trim(),
+          preis: parseFloat(r.querySelector('[data-f="preis"]').value) || 0,
+          motive: parseInt(r.querySelector('[data-f="motive"]').value, 10) || 0
+        };
+        if (r.querySelector('[data-f="set"]').checked) item.set = true;
+        produkte.push(item);
+      });
+      var motive = document.getElementById('motive-list').value.split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
+      return {
+        versand: {
+          preis: parseFloat(document.getElementById('v-preis').value) || 0,
+          gratis_ab_betrag: parseFloat(document.getElementById('v-gratis').value) || 0
+        },
+        motive: motive,
+        produkte: produkte
+      };
+    }
+
+    document.getElementById('add-prod').addEventListener('click', function() {
+      STATE.catalog = collectCatalogFromForm();
+      STATE.catalog.produkte.push({ id: 'neues-produkt', name: 'Neues Produkt', groesse: '', preis: 15, motive: 1 });
+      renderCatalog();
+    });
+
+    document.getElementById('prod-rows').addEventListener('click', function(e) {
+      var b = e.target.closest('[data-del-prod]');
+      if (!b) return;
+      STATE.catalog = collectCatalogFromForm();
+      STATE.catalog.produkte.splice(parseInt(b.dataset.delProd, 10), 1);
+      renderCatalog();
+    });
+
+    document.getElementById('save-catalog').addEventListener('click', function() {
+      var cat = collectCatalogFromForm();
+      fetch('/api/admin/catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cat)
+      }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.ok) {
+          toast('Katalog & Preise gespeichert!');
+          loadState();
+        } else {
+          toast(res.error || 'Fehler beim Speichern', 'err');
+        }
+      });
+    });
+
+    function renderImages() {
+      var grid = document.getElementById('img-grid');
+      grid.innerHTML = (STATE.images || []).map(function(rel) {
+        return '<div class="img-card">' +
+          '<img src="/' + esc(rel) + '?t=' + Date.now() + '" loading="lazy" alt="">' +
+          '<code>' + esc(rel) + '</code>' +
+          '<button type="button" class="btn danger" data-del-img="' + esc(rel) + '" style="justify-content:center;padding:5px 10px">Löschen</button>' +
+        '</div>';
+      }).join('');
+      renderGalleries();
+    }
+
+    function renderGalleries() {
+      var imgOpts = (STATE.images || []).map(function(im) { return '<option value="' + esc(im) + '">' + esc(im) + '</option>'; }).join('');
+      var comBody = document.getElementById('com-rows');
+      comBody.innerHTML = (STATE.community || []).map(function(pair, i) {
+        var path = pair[0] || '', cap = pair[1] || '';
+        return '<tr data-cidx="' + i + '">' +
+          '<td><input type="text" list="all-imgs" data-cf="path" value="' + esc(path) + '"></td>' +
+          '<td><input type="text" data-cf="cap" value="' + esc(cap) + '"></td>' +
+          '<td><button type="button" class="btn danger" data-del-com="' + i + '">✕</button></td>' +
+        '</tr>';
+      }).join('') + '<datalist id="all-imgs">' + imgOpts + '</datalist>';
+
+      var mBox = document.getElementById('motif-img-list');
+      var motives = (STATE.catalog && STATE.catalog.motive) ? STATE.catalog.motive : Object.keys(STATE.motif_images || {});
+      var mImgs = STATE.motif_images || {};
+      mBox.innerHTML = motives.map(function(m) {
+        var lines = (mImgs[m] || []).map(function(entry) { return (entry[0] || '') + ' | ' + (entry[1] || ''); }).join('\n');
+        return '<label style="display:grid;gap:4px"><b>' + esc(m) + '</b>' +
+          '<textarea rows="3" data-motif-name="' + esc(m) + '" placeholder="img/beispiel-1.png | schräg von vorne, unbemalt">' + esc(lines) + '</textarea></label>';
+      }).join('');
+    }
+
+    function collectGalleries() {
+      var com = [];
+      document.querySelectorAll('#com-rows tr[data-cidx]').forEach(function(r) {
+        var p = r.querySelector('[data-cf="path"]').value.trim();
+        var c = r.querySelector('[data-cf="cap"]').value.trim();
+        if (p) com.push([p, c]);
+      });
+      var mImgs = {};
+      document.querySelectorAll('#motif-img-list textarea[data-motif-name]').forEach(function(ta) {
+        var m = ta.dataset.motifName;
+        var list = [];
+        ta.value.split('\n').forEach(function(line) {
+          line = line.trim();
+          if (!line) return;
+          var parts = line.split('|');
+          var p = (parts[0] || '').trim();
+          var c = (parts.slice(1).join('|') || '').trim();
+          if (p) list.push([p, c]);
+        });
+        if (list.length) mImgs[m] = list;
+      });
+      return { community: com, motif_images: mImgs };
+    }
+
+    document.getElementById('add-com').addEventListener('click', function() {
+      var g = collectGalleries();
+      STATE.community = g.community;
+      STATE.motif_images = g.motif_images;
+      STATE.community.push(['img/fotos/', 'Neue Beschreibung']);
+      renderGalleries();
+    });
+
+    document.getElementById('com-rows').addEventListener('click', function(e) {
+      var b = e.target.closest('[data-del-com]');
+      if (!b) return;
+      var g = collectGalleries();
+      STATE.community = g.community;
+      STATE.motif_images = g.motif_images;
+      STATE.community.splice(parseInt(b.dataset.delCom, 10), 1);
+      renderGalleries();
+    });
+
+    function saveGalleriesNow() {
+      var g = collectGalleries();
+      fetch('/api/admin/galleries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(g)
+      }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.ok) { toast('Bild-Zuordnungen gespeichert!'); loadState(); }
+        else toast(res.error || 'Fehler beim Speichern', 'err');
+      });
+    }
+    document.getElementById('save-galleries').addEventListener('click', saveGalleriesNow);
+    document.getElementById('save-galleries-2').addEventListener('click', saveGalleriesNow);
+
+    document.getElementById('upload-img-btn').addEventListener('click', function() {
+      var input = document.getElementById('img-input');
+      var folder = document.getElementById('img-folder').value;
+      if (!input.files.length) return toast('Bitte zuerst Bilddatei(en) auswählen.', 'err');
+      var chain = Promise.resolve();
+      Array.from(input.files).forEach(function(file) {
+        chain = chain.then(function() {
+          return fetch('/api/admin/upload-image?path=' + encodeURIComponent(folder + '/' + file.name), {
+            method: 'POST',
+            body: file
+          }).then(function(r) { return r.json(); });
+        });
+      });
+      chain.then(function() {
+        input.value = '';
+        toast('Bilder hochgeladen!');
+        loadState();
+      });
+    });
+
+    document.getElementById('img-grid').addEventListener('click', function(e) {
+      var b = e.target.closest('[data-del-img]');
+      if (!b) return;
+      var rel = b.dataset.delImg;
+      fetch('/api/admin/delete-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: rel })
+      }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.ok) { toast('Bild gelöscht'); loadState(); }
+        else toast(res.error || 'Fehler', 'err');
+      });
+    });
+
+    document.getElementById('zip-input').addEventListener('change', function(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      toast('ZIP wird importiert …');
+      fetch('/api/admin/upload-zip', {
+        method: 'POST',
+        body: file
+      }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.ok) {
+          toast('ZIP erfolgreich importiert (' + res.files + ' Dateien)!');
+          loadState();
+        } else {
+          toast(res.error || 'Import fehlgeschlagen', 'err');
+        }
+      });
+    });
+
+    document.getElementById('save-html').addEventListener('click', function() {
+      var html = document.getElementById('html-editor').value;
+      fetch('/api/admin/html', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: html })
+      }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.ok) { toast('index.html gespeichert!'); loadState(); }
+        else toast(res.error || 'Fehler beim Speichern', 'err');
+      });
+    });
+
+    function renderOrders(orders) {
+      var tbody = document.getElementById('order-rows');
+      if (!orders || !orders.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted)">Noch keine Bestellungen vorhanden.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = orders.map(function(o) {
+        var k = o.kunde || {};
+        var pos = (o.positionen || []).map(function(p) {
+          var m = p.motive && p.motive.length ? ' (' + p.motive.join(', ') + ')' : '';
+          return p.qty + '× ' + p.name + m;
+        }).join(', ');
+        return '<tr>' +
+          '<td><b>' + esc(o.bestellnummer) + '</b></td>' +
+          '<td>' + esc(o.datum) + '</td>' +
+          '<td>' + esc(k.name) + '<br><small>' + esc(k.email) + '</small></td>' +
+          '<td>' + esc(k.adresse) + '<br>' + esc(k.plz_ort) + '</td>' +
+          '<td>' + esc(pos) + '</td>' +
+          '<td>' + esc(o.zahlung || 'Rechnung') + '</td>' +
+          '<td><b>CHF ' + esc(Number(o.total || 0).toFixed(2)) + '</b></td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function loadState() {
+      fetch('/api/admin/state').then(function(r) { return r.json(); }).then(function(data) {
+        STATE = data;
+        renderCatalog();
+        renderImages();
+        document.getElementById('html-editor').value = data.html || '';
+        renderOrders(data.orders || []);
+      });
+    }
+
+    loadState();
+  </script>
+</body>
+</html>
