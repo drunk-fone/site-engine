@@ -1,0 +1,26 @@
+{
+  "shop_name": "My Store",
+  "shop_tagline": "Handmade Quality Products",
+  "shop_url": "https://example.com",
+  "shop_address": "Musterstrasse 1, 8000 Zürich",
+  "contact_email": "info@example.com",
+  "currency": "CHF",
+  "order_prefix": "ORD",
+  "versand": {
+    "preis": 8,
+    "gratis_ab_betrag": 50
+  },
+  "motive": [
+    "Design A",
+    "Design B"
+  ],
+  "produkte": [
+    {
+      "id": "item-1",
+      "name": "Standard Item",
+      "groesse": "M",
+      "preis": 25,
+      "motive": 1
+    }
+  ]
+}

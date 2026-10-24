@@ -1,0 +1,70 @@
+{
+  "shop_name": "Sculptcolor",
+  "shop_tagline": "3D-gedruckte Figuren aus weissem PLA zum Selbstbemalen",
+  "shop_url": "https://sculptcolor.ch",
+  "shop_address": "Eschenrain 49, 2540 Grenchen",
+  "contact_email": "sculptcolor@gmail.com",
+  "currency": "CHF",
+  "order_prefix": "SC-W",
+  "versand": {
+    "preis": 9,
+    "gratis_ab_betrag": 60
+  },
+  "motive": [
+    "Schlafender Fuchs",
+    "Abstrakte Statue (Paar)",
+    "Astronaut",
+    "Bärenkopf",
+    "Eichhörnchen",
+    "Kristall",
+    "Pilzgruppe",
+    "Pinguin mit Herz",
+    "Schildkröte"
+  ],
+  "produkte": [
+    {
+      "id": "set-klein",
+      "name": "Set klein",
+      "groesse": "6 cm",
+      "preis": 24,
+      "motive": 1,
+      "set": true
+    },
+    {
+      "id": "set-gross",
+      "name": "Set gross",
+      "groesse": "12 cm",
+      "preis": 45,
+      "motive": 1,
+      "set": true
+    },
+    {
+      "id": "figur-klein",
+      "name": "Figur klein",
+      "groesse": "6 cm",
+      "preis": 14,
+      "motive": 1
+    },
+    {
+      "id": "figur-gross",
+      "name": "Figur gross",
+      "groesse": "12 cm",
+      "preis": 29,
+      "motive": 1
+    },
+    {
+      "id": "farbkette",
+      "name": "Farbkette",
+      "groesse": "6 Farben",
+      "preis": 8,
+      "motive": 0
+    },
+    {
+      "id": "sticker",
+      "name": "Sticker-Set",
+      "groesse": "5 Logo-Sticker",
+      "preis": 2,
+      "motive": 0
+    }
+  ]
+}
