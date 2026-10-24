@@ -22,6 +22,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Security and Unit Tests
+        run: |
+          python3 -m unittest discover tests
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 

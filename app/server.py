@@ -183,6 +183,11 @@ RATES, RATES_LOCK = {}, threading.Lock()
 def check_rate(ip):
     now = time.time()
     with RATES_LOCK:
+        # Speicherbereinigung: Abgelaufene IPs entfernen, wenn Dict gross wird
+        if len(RATES) > 1000:
+            expired = [k for k, v in RATES.items() if not v or (now - v[-1] >= RATE_WINDOW)]
+            for k in expired:
+                del RATES[k]
         times = [t for t in RATES.get(ip, []) if now - t < RATE_WINDOW]
         if len(times) >= RATE_MAX:
             return False
@@ -193,10 +198,17 @@ def check_rate(ip):
 # ---------------------------------------------------------------- Speichern
 STORE_LOCK = threading.Lock()
 
+def sanitize_csv(v):
+    """Verhindert CSV/Formula-Injection in Excel/Calc (CWE-1236)."""
+    s = str(v or "")
+    if s.startswith(("=", "+", "-", "@", "\t", "\r")):
+        return "'" + s
+    return s
+
 def next_order_number(year):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     cfile = DATA_DIR / f"zaehler-{year}.txt"
-    with STORE_LOCK, open(cfile, "a+", encoding="utf-8") as f:
+    with open(cfile, "a+", encoding="utf-8") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         f.seek(0)
         c = f.read().strip()
@@ -211,31 +223,42 @@ def next_order_number(year):
 def save_order(o):
     now = dt.datetime.now(dt.timezone.utc).astimezone()
     o["datum"] = now.strftime("%Y-%m-%d %H:%M:%S")
-    o["bestellnummer"] = next_order_number(now.year)
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    jsonl = DATA_DIR / "bestellungen.jsonl"
-    with open(jsonl, "a", encoding="utf-8") as f:
-        f.write(json.dumps(o, ensure_ascii=False) + "\n")
+    with STORE_LOCK:
+        o["bestellnummer"] = next_order_number(now.year)
 
-    csv_path = DATA_DIR / "bestellungen.csv"
-    neu = not csv_path.exists()
-    fields = ["Bestellnummer", "Datum", "Name", "Adresse", "PLZ_Ort", "E-Mail", "Telefon",
-              "Zahlung", "Positionen", "Zwischensumme", "Versand", "Total", "Nachricht"]
-    with open(csv_path, "a", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=fields, delimiter=";")
-        if neu:
-            w.writeheader()
-        pos_txt = " | ".join(f"{p['qty']}x {p['name']}" +
-                             (f" ({', '.join(p['motive'])})" if p["motive"] else "")
-                             for p in o["positionen"])
-        k = o["kunde"]
-        w.writerow({"Bestellnummer": o["bestellnummer"], "Datum": o["datum"],
-                    "Name": k["name"], "Adresse": k["adresse"], "PLZ_Ort": k["plz_ort"],
-                    "E-Mail": k["email"], "Telefon": k["telefon"], "Zahlung": o["zahlung"],
-                    "Positionen": pos_txt,
-                    "Zwischensumme": fmt_money(o["zwischensumme"]), "Versand": fmt_money(o["versand"]),
-                    "Total": fmt_money(o["total"]), "Nachricht": o["nachricht"]})
+        jsonl = DATA_DIR / "bestellungen.jsonl"
+        with open(jsonl, "a", encoding="utf-8") as f:
+            f.write(json.dumps(o, ensure_ascii=False) + "\n")
+
+        csv_path = DATA_DIR / "bestellungen.csv"
+        neu = not csv_path.exists()
+        fields = ["Bestellnummer", "Datum", "Name", "Adresse", "PLZ_Ort", "E-Mail", "Telefon",
+                  "Zahlung", "Positionen", "Zwischensumme", "Versand", "Total", "Nachricht"]
+        with open(csv_path, "a", newline="", encoding="utf-8-sig") as f:
+            w = csv.DictWriter(f, fieldnames=fields, delimiter=";")
+            if neu:
+                w.writeheader()
+            pos_txt = " | ".join(f"{p['qty']}x {p['name']}" +
+                                 (f" ({', '.join(p['motive'])})" if p["motive"] else "")
+                                 for p in o["positionen"])
+            k = o["kunde"]
+            w.writerow({
+                "Bestellnummer": o["bestellnummer"],
+                "Datum": o["datum"],
+                "Name": sanitize_csv(k["name"]),
+                "Adresse": sanitize_csv(k["adresse"]),
+                "PLZ_Ort": sanitize_csv(k["plz_ort"]),
+                "E-Mail": sanitize_csv(k["email"]),
+                "Telefon": sanitize_csv(k["telefon"]),
+                "Zahlung": sanitize_csv(o["zahlung"]),
+                "Positionen": sanitize_csv(pos_txt),
+                "Zwischensumme": fmt_money(o["zwischensumme"]),
+                "Versand": fmt_money(o["versand"]),
+                "Total": fmt_money(o["total"]),
+                "Nachricht": sanitize_csv(o["nachricht"])
+            })
     return o["bestellnummer"]
 
 # ------------------------------------------------------------- E-Mail-Versand
@@ -307,16 +330,20 @@ SEC_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "X-Frame-Options": "DENY",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-    "Content-Security-Policy": ("default-src 'self'; img-src 'self' data:; "
-                                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-                                "font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; "
-                                "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"),
+    "Content-Security-Policy": (
+        "default-src 'self'; img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    ),
 }
 mimetypes.add_type("image/svg+xml", ".svg")
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "SiteEngine/1.0"
+    sys_version = ""
 
     def log_message(self, fmt, *args):
         log.info("%s %s", self.client_ip(), fmt % args)
@@ -355,7 +382,10 @@ class Handler(BaseHTTPRequestHandler):
         if path.endswith("/"):
             path += "index.html"
         target = (PUBLIC_DIR / path.lstrip("/")).resolve()
-        if PUBLIC_DIR not in target.parents or not target.is_file():
+        try:
+            if not target.is_relative_to(PUBLIC_DIR) or not target.is_file():
+                return self.send(404, b"Nicht gefunden", head=head)
+        except (ValueError, RuntimeError):
             return self.send(404, b"Nicht gefunden", head=head)
         data = target.read_bytes()
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
@@ -387,7 +417,6 @@ class Handler(BaseHTTPRequestHandler):
         if length <= 0 or length > MAX_BODY:
             return self.json(413, {"error": "Anfrage zu gross"})
 
-        body = self.wfile.read(length) if hasattr(self.rfile, "read") else b""
         body = self.rfile.read(length)
         try:
             data = json.loads(body.decode("utf-8"))

@@ -183,6 +183,16 @@
       })
       .catch(() => renderProducts());
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
     function renderProducts() {
       var grid = document.getElementById("product-grid");
       grid.innerHTML = "";
@@ -192,22 +202,23 @@
         card.className = "card";
         var motiveSelect = "";
         if (p.motive && p.motive > 0 && CATALOG.motive) {
-          motiveSelect = `<select id="motive-${p.id}" class="form-control" style="margin-bottom:0.75rem;">` +
-            CATALOG.motive.map(m => `<option value="${m}">${m}</option>`).join("") +
+          motiveSelect = `<select id="motive-${escapeHtml(p.id)}" class="form-control" style="margin-bottom:0.75rem;">` +
+            CATALOG.motive.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("") +
             `</select>`;
         }
         card.innerHTML = `
-          <img src="img/placeholder.svg" alt="${p.name}">
+          <img src="img/placeholder.svg" alt="${escapeHtml(p.name)}">
           <div class="card-body">
-            <h3 class="card-title">${p.name}</h3>
-            <p class="card-desc">${p.groesse || 'Standard-Ausführung'}</p>
+            <h3 class="card-title">${escapeHtml(p.name)}</h3>
+            <p class="card-desc">${escapeHtml(p.groesse || 'Standard-Ausführung')}</p>
             ${motiveSelect}
             <div class="card-footer">
-              <span class="price">${curr} ${p.preis.toFixed(2)}</span>
-              <button class="add-btn" onclick="addToCart('${p.id}')">+ Hinzufügen</button>
+              <span class="price">${escapeHtml(curr)} ${p.preis.toFixed(2)}</span>
+              <button class="add-btn">+ Hinzufügen</button>
             </div>
           </div>
         `;
+        card.querySelector(".add-btn").addEventListener("click", () => addToCart(p.id));
         grid.appendChild(card);
       });
     }
@@ -258,15 +269,16 @@
       CART.forEach((item, idx) => {
         var total = item.preis * item.qty;
         subtotal += total;
-        var mStr = item.motive && item.motive.length ? ` <small style="color:var(--text-muted)">(${item.motive.join(', ')})</small>` : '';
+        var safeName = escapeHtml(item.name);
+        var mStr = item.motive && item.motive.length ? ` <small style="color:var(--text-muted)">(${escapeHtml(item.motive.join(', '))})</small>` : '';
         html += `
           <div class="cart-item">
             <div>
-              <strong>${item.name}</strong>${mStr}<br>
-              <small>${item.qty} × ${curr} ${item.preis.toFixed(2)}</small>
+              <strong>${safeName}</strong>${mStr}<br>
+              <small>${item.qty} × ${escapeHtml(curr)} ${item.preis.toFixed(2)}</small>
             </div>
             <div>
-              <strong>${curr} ${total.toFixed(2)}</strong>
+              <strong>${escapeHtml(curr)} ${total.toFixed(2)}</strong>
               <button onclick="removeItem(${idx})" style="background:none;border:none;color:#ef4444;margin-left:0.5rem;cursor:pointer;">&times;</button>
             </div>
           </div>
@@ -336,10 +348,12 @@
           <div style="text-align:center; padding: 2rem 0;">
             <div style="font-size: 3rem; margin-bottom: 0.5rem;">🎉</div>
             <h3>Vielen Dank für deine Bestellung!</h3>
-            <p style="margin: 0.75rem 0; color:var(--text-muted);">Deine Bestellnummer: <strong>${res.data.bestellnummer}</strong></p>
-            <p style="font-size:0.9rem;">Eine Bestätigung wurde an <strong>${email}</strong> gesendet.</p>
+            <p style="margin: 0.75rem 0; color:var(--text-muted);">Deine Bestellnummer: <strong id="conf-nr"></strong></p>
+            <p style="font-size:0.9rem;">Eine Bestätigung wurde an <strong id="conf-email"></strong> gesendet.</p>
           </div>
         `;
+        document.getElementById("conf-nr").textContent = res.data.bestellnummer;
+        document.getElementById("conf-email").textContent = email;
         document.getElementById("checkout-form").style.display = "none";
       })
       .catch(err => {
