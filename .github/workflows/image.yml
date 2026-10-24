@@ -42,7 +42,8 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/site-engine
           tags: |
             type=semver,pattern={{version}}
-            type=sha,prefix=
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and Push Image
@@ -56,3 +57,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  cleanup:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old untagged image versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'site-engine'
+          package-type: 'container'
+          min-versions-to-keep: 3
+          delete-only-untagged-versions: 'true'
+        continue-on-error: true
