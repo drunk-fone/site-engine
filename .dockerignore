@@ -1,5 +1,8 @@
 .git
 .github
+.claude
 *.md
 **/__pycache__
 data
+graphify-out
+tests
