@@ -177,6 +177,115 @@ class TestSiteEngineSecurity(unittest.TestCase):
         self.assertEqual(eff["mail_to"], "orders@example.com")
         self.assertFalse(eff["testmodus"])
 
+
+class TestFeaturesAndPages(unittest.TestCase):
+    """HTTP-Tests gegen einen echten Server: Feature-Schalter und Unterseiten."""
+
+    def setUp(self):
+        import base64
+        from http.server import ThreadingHTTPServer
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        server.DATA_DIR = Path(self.tmp_dir.name)
+        server.ADMIN_PASSWORD = "pw"
+        server.RATES.clear()
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.auth = "Basic " + base64.b64encode(b"admin:pw").decode()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        server.ADMIN_PASSWORD = ""
+        self.tmp_dir.cleanup()
+
+    def req(self, method, path, body=None, auth=True):
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        headers = {"Authorization": self.auth} if auth else {}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            headers["Content-Type"] = "application/json"
+        c.request(method, path, data, headers)
+        r = c.getresponse()
+        out = r.status, r.read()
+        c.close()
+        return out
+
+    def test_slug_validation(self):
+        for ok in ("impressum", "ueber-uns", "a1"):
+            self.assertTrue(server.valid_slug(ok), ok)
+        for bad in ("", "../etc/passwd", "a/b", "A", "-x", "x" * 41, "admin", "api", "img", "a.b", "a%2fb", None):
+            self.assertFalse(server.valid_slug(bad), bad)
+
+    def test_page_lifecycle_and_auth(self):
+        html = "<!doctype html><html><body>Impressum</body></html>"
+        # ohne Login nicht schreibbar
+        self.assertEqual(self.req("POST", "/api/admin/page", {"slug": "impressum", "html": html}, auth=False)[0], 401)
+        self.assertEqual(self.req("GET", "/impressum")[0], 404)
+        st, _ = self.req("POST", "/api/admin/page", {"slug": "impressum", "html": html})
+        self.assertEqual(st, 200)
+        # öffentlich erreichbar, mit und ohne Slash
+        st, body = self.req("GET", "/impressum", auth=False)
+        self.assertEqual((st, body.decode()), (200, html))
+        self.assertEqual(self.req("GET", "/impressum/", auth=False)[0], 200)
+        # nur unter einer URL, nicht als Datei
+        self.assertEqual(self.req("GET", "/pages/impressum.html", auth=False)[0], 404)
+        st, body = self.req("GET", "/api/admin/state")
+        self.assertEqual([p["slug"] for p in json.loads(body)["pages"]], ["impressum"])
+        self.assertEqual(self.req("POST", "/api/admin/page-delete", {"slug": "impressum"})[0], 200)
+        self.assertEqual(self.req("GET", "/impressum", auth=False)[0], 404)
+
+    def test_page_rejects_bad_slugs(self):
+        for bad in ("../x", "admin", "A B", "x/y", ""):
+            st, _ = self.req("POST", "/api/admin/page", {"slug": bad, "html": "<p>x</p>"})
+            self.assertEqual(st, 400, bad)
+        self.assertFalse((Path(self.tmp_dir.name) / "x.html").exists())
+        self.assertEqual(self.req("GET", "/api/admin/page?slug=..%2F..%2Fetc%2Fpasswd")[0], 400)
+
+    def test_shop_feature_off_returns_404(self):
+        pid = list(server.CAT["by_id"].keys())[0]
+        order = {"positionen": [{"id": pid, "qty": 1}]}
+        self.assertEqual(self.req("GET", "/api/config", auth=False)[0], 200)
+        # abschalten über das Admin-UI
+        st, _ = self.req("POST", "/api/admin/settings", {"features": {"shop": False}})
+        self.assertEqual(st, 200)
+        self.assertFalse(server.feature_enabled("shop"))
+        self.assertEqual(self.req("GET", "/api/config", auth=False)[0], 404)
+        self.assertEqual(self.req("POST", "/api/bestellung", order, auth=False)[0], 404)
+        self.assertEqual(self.req("GET", "/api/admin/orders.csv")[0], 404)
+        for ep in ("catalog", "galleries", "test-email"):
+            self.assertEqual(self.req("POST", "/api/admin/" + ep, {"produkte": [{}]})[0], 404, ep)
+        st, body = self.req("GET", "/api/admin/state")
+        self.assertEqual(json.loads(body)["features"], {"shop": False})
+        # wieder einschalten
+        self.req("POST", "/api/admin/settings", {"features": {"shop": True}})
+        self.assertEqual(self.req("GET", "/api/config", auth=False)[0], 200)
+
+    def test_env_default_and_missing_catalog(self):
+        old = os.environ.get("FEATURE_SHOP")
+        os.environ["FEATURE_SHOP"] = "0"
+        try:
+            self.assertFalse(server.feature_enabled("shop"))
+            # Ohne Produktliste darf der Start im Nicht-Shop-Modus nicht abbrechen
+            orig = server.CONFIG_FILE, server.active_index_file
+            server.CONFIG_FILE = Path(self.tmp_dir.name) / "none.json"
+            server.active_index_file = lambda: Path(self.tmp_dir.name) / "none.html"
+            try:
+                self.assertEqual(server.load_config_and_catalog()["produkte"], [])
+                os.environ["FEATURE_SHOP"] = "1"
+                with self.assertRaises(SystemExit):
+                    server.load_config_and_catalog()
+            finally:
+                server.CONFIG_FILE, server.active_index_file = orig
+        finally:
+            if old is None:
+                os.environ.pop("FEATURE_SHOP", None)
+            else:
+                os.environ["FEATURE_SHOP"] = old
+
+
 if __name__ == "__main__":
     unittest.main()
 

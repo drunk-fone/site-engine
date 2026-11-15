@@ -63,3 +63,10 @@ DATA_DIR=../data python3 server.py
 ```
 Bestellungen landen direkt in `../data/bestellungen.csv` und `../data/bestellungen.jsonl`.
 
+---
+
+## 🧩 Funktionen, Unterseiten & Dunkelmodus
+
+* **Feature-Schalter:** Der Webshop lässt sich unter *Admin → Einstellungen → Funktionen* abschalten (oder per Env `FEATURE_SHOP=0` als Standard). Deaktiviert antworten `/api/bestellung`, `/api/config` und die Shop-Admin-Endpunkte mit 404, und die Shop-Tabs verschwinden. Ohne Shop ist keine Produktliste mehr nötig.
+* **Unterseiten:** *Admin → Unterseiten* legt eigene HTML-Seiten unter `/<name>` an (`a-z`, `0-9`, `-`, max. 40 Zeichen; `admin`, `api`, `img` u. a. sind reserviert). Gespeichert in `/data/site/pages/` und im Backup-ZIP enthalten.
+* **Dunkelmodus:** Der Admin folgt der System-Einstellung; der Button in der Kopfzeile schaltet um und merkt sich die Wahl im Browser.

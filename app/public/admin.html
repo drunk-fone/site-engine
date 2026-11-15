@@ -3,21 +3,38 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Shop-Administration · Site-Engine</title>
+  <title>Administration · Site-Engine</title>
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('admin-theme'); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
   <style>
     :root {
       --bg: #f4f7f8; --card: #ffffff; --ink: #1d2426; --muted: #56656a;
       --line: #dce5e6; --primary: #0098a6; --accent: #d6336c; --ok: #1b7f4b; --err: #b3261e;
     }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #12181a; --card: #1b2326; --ink: #e6eef0; --muted: #9bb0b6;
+      --line: #2e3b3f; --primary: #14b5c4; --accent: #f06595; --ok: #4cc38a; --err: #ff7b72;
+      --input: #12181a; --soft: #16292c; --header: #0c1012;
+    }
+    :root { --input: #fff; --soft: #f0fafb; --header: #1d2426; }
     * { box-sizing: border-box; }
     body { margin: 0; font: 400 15px/1.5 system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--ink); }
-    header { background: var(--ink); color: #fff; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    header { background: var(--header); color: #fff; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
     header h1 { margin: 0; font-size: 1.25rem; }
     header a { color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,.35); padding: 6px 14px; border-radius: 999px; font-size: .9rem; }
     .wrap { max-width: 1120px; margin: 24px auto; padding: 0 16px 64px; }
     .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 2px solid var(--line); padding-bottom: 12px; }
     .tab { border: 1.5px solid var(--line); background: var(--card); color: var(--ink); padding: 9px 18px; border-radius: 999px; font-weight: 600; cursor: pointer; font-size: .95rem; }
     .tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+    :root[data-theme="dark"] .btn.primary, :root[data-theme="dark"] .tab.active { color: #04181b; }
+    header button.theme { background: none; color: #fff; border: 1px solid rgba(255,255,255,.35); padding: 6px 14px; border-radius: 999px; font-size: .9rem; cursor: pointer; }
     .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; margin-bottom: 20px; }
     .card h2 { margin: 0 0 8px; font-size: 1.2rem; }
     .card p.sub { margin: 0 0 16px; color: var(--muted); font-size: .92rem; }
@@ -28,16 +45,16 @@
     th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
     th { color: var(--muted); font-weight: 600; font-size: .82rem; text-transform: uppercase; letter-spacing: .05em; }
     input[type="text"], input[type="number"], input[type="password"], input[type="email"], select, textarea {
-      width: 100%; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 8px; font: inherit; color: var(--ink); background: #fff;
+      width: 100%; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 8px; font: inherit; color: var(--ink); background: var(--input);
     }
     textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; min-height: 420px; white-space: pre; }
     .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
     .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 14px; margin-top: 16px; }
     .img-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--bg); display: grid; gap: 8px; font-size: .82rem; }
-    .img-card img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 8px; }
+    .img-card img { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--input); border-radius: 8px; }
     .img-card code { word-break: break-all; font-size: .78rem; }
-    .dropzone { border: 2px dashed var(--primary); border-radius: 14px; padding: 28px; text-align: center; background: #f0fafb; cursor: pointer; }
-    .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 12px; background: var(--ink); color: #fff; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.2); z-index: 100; }
+    .dropzone { border: 2px dashed var(--primary); border-radius: 14px; padding: 28px; text-align: center; background: var(--soft); cursor: pointer; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 12px; background: var(--header); color: #fff; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.2); z-index: 100; }
     .toast.ok { background: var(--ok); }
     .toast.err { background: var(--err); }
     [hidden] { display: none !important; }
@@ -45,8 +62,9 @@
 </head>
 <body>
   <header>
-    <h1>⚙️ Shop-Administration</h1>
+    <h1>⚙️ Administration</h1>
     <div style="display:flex;gap:10px;align-items:center">
+      <button type="button" class="theme" id="theme-toggle" title="Dunkelmodus umschalten">🌙 Dunkel</button>
       <a href="/api/admin/backup.zip">Backup (.zip)</a>
       <a href="/" target="_blank">Webseite öffnen ↗</a>
     </div>
@@ -54,15 +72,16 @@
 
   <div class="wrap">
     <div class="tabs">
-      <button class="tab active" data-tab="katalog">1. Produkte, Preise & Motive</button>
-      <button class="tab" data-tab="bilder">2. Bilder & Fotos</button>
-      <button class="tab" data-tab="import">3. ZIP-Import & HTML-Editor</button>
-      <button class="tab" data-tab="bestellungen">4. Bestellungen</button>
-      <button class="tab" data-tab="settings">5. Einstellungen (Login & E-Mail)</button>
+      <button class="tab" data-tab="katalog" data-feature="shop">Produkte, Preise & Motive</button>
+      <button class="tab" data-tab="bilder">Bilder & Fotos</button>
+      <button class="tab" data-tab="import">ZIP-Import & HTML-Editor</button>
+      <button class="tab" data-tab="seiten">Unterseiten</button>
+      <button class="tab" data-tab="bestellungen" data-feature="shop">Bestellungen</button>
+      <button class="tab" data-tab="settings">Einstellungen</button>
     </div>
 
     <!-- TAB 1: KATALOG -->
-    <div id="tab-katalog" class="tab-pane">
+    <div id="tab-katalog" class="tab-pane" hidden>
       <div class="card">
         <h2>Produkte & Preise</h2>
         <p class="sub">Änderungen hier aktualisieren sofort die Preise im Shop und auf der Webseite.</p>
@@ -197,7 +216,38 @@
     </div>
 
     <!-- TAB 5: EINSTELLUNGEN (LOGIN & E-MAIL) -->
+    <!-- TAB: UNTERSEITEN -->
+    <div id="tab-seiten" class="tab-pane" hidden>
+      <div class="card">
+        <h2>Unterseiten</h2>
+        <p class="sub">Eigene HTML-Seiten, erreichbar unter <code>/seitenname</code> (z. B. <code>/impressum</code>). Erlaubt: Kleinbuchstaben, Zahlen und Bindestrich.</p>
+        <table>
+          <thead><tr><th>Adresse</th><th>Grösse</th><th></th></tr></thead>
+          <tbody id="page-rows"></tbody>
+        </table>
+        <p id="page-empty" class="sub" style="margin-top:12px" hidden>Noch keine Unterseiten.</p>
+      </div>
+      <div class="card">
+        <h2 id="page-form-title">Neue Seite</h2>
+        <label><span>Seitenname</span><input type="text" id="page-slug" placeholder="impressum" maxlength="40" autocomplete="off"></label>
+        <label style="display:block;margin-top:12px"><span>HTML</span><textarea id="page-html" class="code" spellcheck="false" placeholder="&lt;!doctype html&gt;..."></textarea></label>
+        <div style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap">
+          <button class="btn primary" type="button" id="page-save">Seite speichern</button>
+          <button class="btn" type="button" id="page-new">Neu / Leeren</button>
+        </div>
+      </div>
+    </div>
+
     <div id="tab-settings" class="tab-pane" hidden>
+      <div class="card">
+        <h2>🧩 Funktionen</h2>
+        <p class="sub">Nicht benötigte Funktionen abschalten. Deaktivierte Funktionen sind auf dem Server nicht erreichbar (404) und im Admin ausgeblendet.</p>
+        <label style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="f-shop" style="width:20px;height:20px">
+          <span><b>Webshop</b> (Produkte, Warenkorb, Bestellungen, E-Mail-Versand)</span>
+        </label>
+        <div style="margin-top:14px"><button class="btn primary" type="button" id="save-features">Funktionen speichern</button></div>
+      </div>
       <div class="card">
         <h2>🔐 Admin-Login ändern</h2>
         <p class="sub">Hier kannst du den Benutzernamen und das Passwort für dieses Admin-Cockpit neu setzen. Das Passwort wird als PBKDF2-SHA256-Hash auf dem persistenten Volume gespeichert.</p>
@@ -205,9 +255,10 @@
           <label><span>Admin-Benutzername</span><input type="text" id="s-admin-user" autocomplete="username"></label>
           <label><span>Neues Admin-Passwort (mind. 8 Zeichen, leer lassen = unverändert)</span><input type="password" id="s-admin-pw" autocomplete="new-password" placeholder="••••••••"></label>
         </div>
+        <div style="margin-top:14px"><button class="btn primary" type="button" id="save-login">Login speichern</button></div>
       </div>
 
-      <div class="card">
+      <div class="card" data-feature="shop">
         <h2>✉️ E-Mail-Versand bei Bestellungen (SMTP)</h2>
         <p class="sub">Konfiguriere hier, wohin Bestellungen gesendet werden und hinterlege das 16-stellige Google App-Passwort für den Versand.</p>
         <div class="grid2">
@@ -251,6 +302,89 @@
         return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
       });
     }
+
+    // Dunkelmodus
+    (function () {
+      var btn = document.getElementById('theme-toggle');
+      function label() {
+        btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️ Hell' : '🌙 Dunkel';
+      }
+      btn.addEventListener('click', function () {
+        var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('admin-theme', next); } catch (e) {}
+        label();
+      });
+      label();
+    })();
+
+    function postJSON(url, body) {
+      return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json(); });
+    }
+
+    function showTab(name) {
+      document.querySelectorAll('.tab').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === name); });
+      document.querySelectorAll('.tab-pane').forEach(function (p) { p.hidden = p.id !== 'tab-' + name; });
+    }
+
+    function applyFeatures(f) {
+      f = f || {};
+      document.querySelectorAll('[data-feature]').forEach(function (el) {
+        el.hidden = !f[el.dataset.feature];
+      });
+      document.getElementById('f-shop').checked = !!f.shop;
+      var active = document.querySelector('.tab.active');
+      if (!active || active.hidden) showTab(f.shop ? 'katalog' : 'bilder');
+    }
+
+    // Unterseiten
+    function renderPages(pages) {
+      var rows = document.getElementById('page-rows');
+      rows.innerHTML = (pages || []).map(function (p) {
+        return '<tr><td><a href="/' + esc(p.slug) + '" target="_blank">/' + esc(p.slug) + '</a></td>' +
+          '<td>' + Math.ceil(p.size / 1024) + ' KB</td>' +
+          '<td style="text-align:right;white-space:nowrap">' +
+          '<button class="btn" type="button" data-edit-page="' + esc(p.slug) + '">Bearbeiten</button> ' +
+          '<button class="btn danger" type="button" data-del-page="' + esc(p.slug) + '">Löschen</button></td></tr>';
+      }).join('');
+      document.getElementById('page-empty').hidden = !!(pages && pages.length);
+    }
+    document.getElementById('page-rows').addEventListener('click', function (e) {
+      var ed = e.target.closest('[data-edit-page]');
+      var del = e.target.closest('[data-del-page]');
+      if (ed) {
+        fetch('/api/admin/page?slug=' + encodeURIComponent(ed.dataset.editPage)).then(function (r) { return r.json(); }).then(function (d) {
+          if (d.error) return toast(d.error, 'err');
+          document.getElementById('page-slug').value = d.slug;
+          document.getElementById('page-html').value = d.html;
+          document.getElementById('page-form-title').textContent = 'Seite bearbeiten: /' + d.slug;
+        });
+      } else if (del && confirm('Seite /' + del.dataset.delPage + ' wirklich löschen?')) {
+        postJSON('/api/admin/page-delete', { slug: del.dataset.delPage }).then(function (res) {
+          if (res.ok) { renderPages(res.pages); toast('Seite gelöscht'); } else toast(res.error || 'Fehler', 'err');
+        });
+      }
+    });
+    document.getElementById('page-save').addEventListener('click', function () {
+      postJSON('/api/admin/page', {
+        slug: document.getElementById('page-slug').value.trim().toLowerCase(),
+        html: document.getElementById('page-html').value
+      }).then(function (res) {
+        if (res.ok) { renderPages(res.pages); toast('Seite /' + res.slug + ' gespeichert'); }
+        else toast(res.error || 'Fehler', 'err');
+      });
+    });
+    document.getElementById('page-new').addEventListener('click', function () {
+      document.getElementById('page-slug').value = '';
+      document.getElementById('page-html').value = '';
+      document.getElementById('page-form-title').textContent = 'Neue Seite';
+    });
+    document.getElementById('save-features').addEventListener('click', function () {
+      postJSON('/api/admin/settings', { features: { shop: document.getElementById('f-shop').checked } }).then(function (res) {
+        if (res.ok) { toast('Funktionen gespeichert'); loadState(); } else toast(res.error || 'Fehler', 'err');
+      });
+    });
 
     // Tabs
     document.querySelectorAll('.tab').forEach(function(btn) {
@@ -536,6 +670,7 @@
       document.getElementById('s-live-mail').checked = !s.testmodus;
     }
 
+    document.getElementById('save-login').addEventListener('click', function() { document.getElementById('save-settings').click(); });
     document.getElementById('save-settings').addEventListener('click', function() {
       var payload = {
         new_admin_user: document.getElementById('s-admin-user').value.trim(),
@@ -580,6 +715,8 @@
     function loadState() {
       fetch('/api/admin/state').then(function(r) { return r.json(); }).then(function(data) {
         STATE = data;
+        applyFeatures(data.features);
+        renderPages(data.pages);
         renderCatalog();
         renderImages();
         renderSettings(data.settings || {});

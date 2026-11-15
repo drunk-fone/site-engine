@@ -85,6 +85,53 @@ def save_runtime_settings(data: dict):
         pass
 
 
+def custom_pages_dir() -> Path:
+    return (DATA_DIR / "site" / "pages").resolve()
+
+
+# ------------------------------------------------------------ Feature-Schalter
+# Jedes Feature ist fest im Code verdrahtet und nur ein/aus: kein Plugin-Loading.
+# Reihenfolge: Admin-UI (settings.json) > Umgebungsvariable > Standard (an).
+FEATURES = ("shop",)
+
+
+def feature_enabled(name: str) -> bool:
+    saved = load_runtime_settings().get("features")
+    if isinstance(saved, dict) and name in saved:
+        return bool(saved[name])
+    return ENV("FEATURE_" + name.upper(), "1") == "1"
+
+
+# ------------------------------------------------------------------ Unterseiten
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+RESERVED_SLUGS = {"admin", "api", "healthz", "readyz", "img", "pages", "index", "static", "assets"}
+MAX_PAGE_BYTES = 1024 * 1024
+
+
+def valid_slug(slug) -> bool:
+    return isinstance(slug, str) and bool(SLUG_RE.match(slug)) and slug not in RESERVED_SLUGS
+
+
+def page_file(slug: str) -> Path:
+    # Der Slug ist per Regex auf [a-z0-9-] beschränkt -> kein Path-Traversal möglich.
+    base = custom_pages_dir()
+    f = (base / f"{slug}.html").resolve()
+    if not valid_slug(slug) or not f.is_relative_to(base):
+        raise ValueError("Ungültiger Seitenname")
+    return f
+
+
+def list_pages() -> list:
+    base = custom_pages_dir()
+    if not base.is_dir():
+        return []
+    out = []
+    for f in sorted(base.glob("*.html")):
+        if valid_slug(f.stem) and f.is_file():
+            out.append({"slug": f.stem, "size": f.stat().st_size})
+    return out
+
+
 def active_index_file() -> Path:
     c_idx = custom_public_dir() / "index.html"
     if c_idx.is_file():
@@ -93,7 +140,7 @@ def active_index_file() -> Path:
 
 
 # ------------------------------------------------- Konfiguration & Katalog laden
-def load_config_and_catalog():
+def load_config_and_catalog(strict=True):
     cfg = {}
     for cpath in (CONFIG_FILE, custom_config_file()):
         if cpath.exists():
@@ -116,7 +163,9 @@ def load_config_and_catalog():
             log.warning("Fehler beim Lesen des Katalogs aus %s: %s", idx_file, e)
 
     if "produkte" not in cfg:
-        raise SystemExit("Produktliste weder in site.json noch in public/index.html gefunden")
+        if strict and feature_enabled("shop"):
+            raise SystemExit("Produktliste weder in site.json noch in public/index.html gefunden")
+        cfg["produkte"] = []
 
     for p in cfg.get("produkte", []):
         if "preis" not in p and "price" in p:
@@ -130,7 +179,7 @@ CAT = load_config_and_catalog()
 
 def reload_catalog():
     global CAT
-    CAT = load_config_and_catalog()
+    CAT = load_config_and_catalog(strict=False)
     return CAT
 
 
@@ -286,6 +335,7 @@ def check_rate(ip):
 
 # ---------------------------------------------------------------- Speichern
 STORE_LOCK = threading.Lock()
+SHOP_ADMIN_PATHS = {"/api/admin/catalog", "/api/admin/galleries", "/api/admin/test-email"}
 
 
 def sanitize_csv(v):
@@ -542,6 +592,8 @@ def build_backup_zip() -> bytes:
             for f in src_pub.rglob("*"):
                 if f.is_file() and f.name != "admin.html":
                     zf.write(f, f"public/{f.relative_to(src_pub)}")
+        for pg in list_pages():
+            zf.write(page_file(pg["slug"]), f"pages/{pg['slug']}.html")
         for fname in ("bestellungen.csv", "bestellungen.jsonl"):
             fpath = DATA_DIR / fname
             if fpath.is_file():
@@ -569,7 +621,7 @@ mimetypes.add_type("text/javascript", ".js")
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "SiteEngine/1.1"
+    server_version = "SiteEngine/1.2"
     sys_version = ""
 
     def log_message(self, fmt, *args):
@@ -628,7 +680,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.check_admin_auth():
             return True
         self.send(401, b"Authentifizierung erforderlich",
-                  extra={"WWW-Authenticate": 'Basic realm="Shop Admin", charset="UTF-8"'})
+                  extra={"WWW-Authenticate": 'Basic realm="Site Admin", charset="UTF-8"'})
         return False
 
     # --- statische Dateien, Admin & Healthchecks
@@ -638,6 +690,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/healthz", "/readyz"):
             return self.send(200, b"ok", head=head, extra={"Cache-Control": "no-store"})
         if path == "/api/config":
+            if not feature_enabled("shop"):
+                return self.json(404, {"error": "Nicht gefunden"})
             return self.json(200, CAT)
 
         # Admin-UI & Admin-GET-Endpunkte
@@ -669,7 +723,10 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         pass
                 cfg = get_effective_settings()
+                shop_on = feature_enabled("shop")
                 return self.json(200, {
+                    "features": {name: feature_enabled(name) for name in FEATURES},
+                    "pages": list_pages(),
                     "catalog": {
                         "versand": CAT.get("versand", {"preis": 9, "gratis_ab_betrag": 60}),
                         "motive": CAT.get("motive", []),
@@ -692,9 +749,19 @@ class Handler(BaseHTTPRequestHandler):
                     "motif_images": motif_images,
                     "images": list_all_images(),
                     "html": html,
-                    "orders": read_orders()[:200],
+                    "orders": read_orders()[:200] if shop_on else [],
                 })
+            if path == "/api/admin/page":
+                slug = (parse_qs(parsed.query).get("slug") or [""])[0]
+                if not valid_slug(slug):
+                    return self.json(400, {"error": "Ungültiger Seitenname"})
+                f = page_file(slug)
+                if not f.is_file():
+                    return self.json(404, {"error": "Seite nicht gefunden"})
+                return self.json(200, {"slug": slug, "html": f.read_text(encoding="utf-8")})
             if path == "/api/admin/orders.csv":
+                if not feature_enabled("shop"):
+                    return self.json(404, {"error": "Feature deaktiviert"})
                 csv_path = DATA_DIR / "bestellungen.csv"
                 data = csv_path.read_bytes() if csv_path.is_file() else b"Noch keine Bestellungen\n"
                 return self.send(200, data, "text/csv; charset=utf-8", extra={
@@ -709,6 +776,7 @@ class Handler(BaseHTTPRequestHandler):
                 }, head=head)
             return self.json(404, {"error": "Unbekannter Admin-Endpunkt"})
 
+        page_slug = path.strip("/")
         if path.endswith("/"):
             path += "index.html"
         rel = path.lstrip("/")
@@ -726,6 +794,11 @@ class Handler(BaseHTTPRequestHandler):
                     break
             except (ValueError, RuntimeError):
                 continue
+
+        if target is None and valid_slug(page_slug):
+            pf = page_file(page_slug)
+            if pf.is_file():
+                target = pf
 
         if target is None:
             return self.send(404, b"Nicht gefunden", head=head)
@@ -753,7 +826,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             return self.handle_admin_post(path, parsed.query)
 
-        if path != "/api/bestellung":
+        if path != "/api/bestellung" or not feature_enabled("shop"):
             return self.json(404, {"ok": False, "error": "Unbekannter Endpunkt", "fehler": "Unbekannter Endpunkt"})
 
         ip = self.client_ip()
@@ -842,6 +915,32 @@ class Handler(BaseHTTPRequestHandler):
                     target.unlink()
                 return self.json(200, {"ok": True})
 
+            if path in SHOP_ADMIN_PATHS and not feature_enabled("shop"):
+                return self.json(404, {"ok": False, "error": "Feature „Shop“ ist deaktiviert."})
+
+            if path == "/api/admin/page":
+                slug = str(payload.get("slug") or "").strip().lower()
+                html = str(payload.get("html") or "")
+                if not valid_slug(slug):
+                    return self.json(400, {"ok": False, "error": "Ungültiger Seitenname (erlaubt: a-z, 0-9, Bindestrich; max. 40 Zeichen)."})
+                if not html.strip():
+                    return self.json(400, {"ok": False, "error": "HTML-Inhalt ist leer."})
+                if len(html.encode("utf-8")) > MAX_PAGE_BYTES:
+                    return self.json(400, {"ok": False, "error": "Seite ist zu gross (max. 1 MB)."})
+                f = page_file(slug)
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(html, encoding="utf-8")
+                return self.json(200, {"ok": True, "slug": slug, "pages": list_pages()})
+
+            if path == "/api/admin/page-delete":
+                slug = str(payload.get("slug") or "")
+                if not valid_slug(slug):
+                    return self.json(400, {"ok": False, "error": "Ungültiger Seitenname"})
+                f = page_file(slug)
+                if f.is_file():
+                    f.unlink()
+                return self.json(200, {"ok": True, "pages": list_pages()})
+
             if path == "/api/admin/catalog":
                 if not isinstance(payload.get("produkte"), list) or not payload["produkte"]:
                     return self.json(400, {"ok": False, "error": "Mindestens ein Produkt erforderlich."})
@@ -907,6 +1006,12 @@ class Handler(BaseHTTPRequestHandler):
                         cur["smtp_port"] = 465
                 if "testmodus" in payload:
                     cur["testmodus"] = bool(payload["testmodus"])
+                if isinstance(payload.get("features"), dict):
+                    feats = cur.get("features") if isinstance(cur.get("features"), dict) else {}
+                    for name in FEATURES:
+                        if name in payload["features"]:
+                            feats[name] = bool(payload["features"][name])
+                    cur["features"] = feats
                 raw_smtp_pass = str(payload.get("smtp_pass") or "").strip()
                 if raw_smtp_pass:
                     if "gmail" in str(cur.get("smtp_host", SMTP_HOST)).lower():
@@ -923,6 +1028,7 @@ class Handler(BaseHTTPRequestHandler):
                     digest = hashlib.pbkdf2_hmac("sha256", new_pw.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
                     cur["admin_password_hash"] = f"{salt}${digest}"
                 save_runtime_settings(cur)
+                reload_catalog()
                 return self.json(200, {"ok": True, "reauth": bool(new_user or new_pw)})
 
             if path == "/api/admin/test-email":
