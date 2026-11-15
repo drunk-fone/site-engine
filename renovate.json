@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "dependencyDashboard": true,
+  "labels": ["renovate", "dependencies"],
+  "customManagers": [
+    {
+      "description": "Trivy-Image in der Workflow-Umgebung (Version + Digest)",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": ["TRIVY_IMAGE: (?<depName>aquasec/trivy):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)"],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Python-Basisimage nur innerhalb von 3.14 aktualisieren (Minor-Sprung bewusst manuell)",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["python"],
+      "allowedVersions": "/^3\\.14-slim$/"
+    }
+  ]
+}
