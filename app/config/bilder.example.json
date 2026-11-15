@@ -1,0 +1,11 @@
+{
+  "nur_bereiche": false,
+  "bereiche": [
+    { "ordner": "hero",    "titel": "Titelbild",        "beschreibung": "Grosses Bild ganz oben auf der Startseite.", "max": 1, "format": "16:9", "beschriftung": false },
+    { "ordner": "galerie", "titel": "Galerie",          "beschreibung": "Fotos für die Bildergalerie.", "max": 24, "format": "4:3" },
+    { "ordner": "team",    "titel": "Team",             "beschreibung": "Porträts, quadratisch.", "format": "1:1" }
+  ],
+  "bilder": {
+    "img/team/anna.jpg": { "text": "Anna – Inhaberin", "alt": "Porträt von Anna" }
+  }
+}

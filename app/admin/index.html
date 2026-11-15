@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="csrf-token" content="__CSRF_TOKEN__">
+  <title>Administration · Site-Engine</title>
+  <script src="/admin/theme.js"></script>
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <header>
+    <h1>⚙️ Administration</h1>
+    <div class="hbar">
+      <button type="button" class="hbtn" id="theme-toggle" title="Dunkelmodus umschalten">🌙 Dunkel</button>
+      <a href="/api/admin/backup.zip">Backup (.zip)</a>
+      <a href="/" target="_blank" rel="noopener">Webseite öffnen ↗</a>
+      <button type="button" class="hbtn" id="logout">Abmelden</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div id="maint-banner" class="notice" style="margin-bottom:16px" hidden>🚧 <b>Wartungsmodus ist aktiv.</b> Besucher sehen die Wartungsseite, du siehst die Webseite normal, solange du angemeldet bist.</div>
+    <div class="tabs">
+      <button class="tab" data-tab="katalog" data-feature="shop">Produkte, Preise & Motive</button>
+      <button class="tab" data-tab="bilder">Bilder</button>
+      <button class="tab" data-tab="import">ZIP-Import & HTML-Editor</button>
+      <button class="tab" data-tab="seiten">Unterseiten</button>
+      <button class="tab" data-tab="nachrichten" data-feature="kontakt">Nachrichten</button>
+      <button class="tab" data-tab="bestellungen" data-feature="shop">Bestellungen</button>
+      <button class="tab" data-tab="settings">Einstellungen</button>
+    </div>
+
+    <!-- KATALOG -->
+    <div id="tab-katalog" class="tab-pane" hidden>
+      <div class="card">
+        <h2>Produkte & Preise</h2>
+        <p class="sub">Änderungen hier aktualisieren sofort die Preise im Shop und auf der Webseite.</p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Grösse / Zusatz</th><th>Preis (CHF)</th><th>Motive wählbar</th><th>Set?</th><th></th></tr></thead>
+            <tbody id="prod-rows"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px"><button class="btn" type="button" id="add-prod">+ Produkt hinzufügen</button></div>
+      </div>
+      <div class="card">
+        <h2>Versand & Motive</h2>
+        <div class="grid2">
+          <label><span>Versandkosten (CHF)</span><input type="number" step="0.5" id="v-preis"></label>
+          <label><span>Gratis Versand ab (CHF)</span><input type="number" step="1" id="v-gratis"></label>
+        </div>
+        <div style="margin-top:16px">
+          <label><span>Verfügbare Motive (ein Motiv pro Zeile)</span><textarea id="motive-list" rows="8"></textarea></label>
+        </div>
+        <div style="margin-top:16px"><button class="btn primary" type="button" id="save-catalog">Katalog & Preise speichern</button></div>
+      </div>
+    </div>
+
+    <!-- BILDER -->
+    <div id="tab-bilder" class="tab-pane" hidden>
+      <div class="card">
+        <h2>Bilder</h2>
+        <p class="sub">Jeder Ordner unter <code>img/</code> ist ein eigener Bereich. Welche Bereiche es gibt, legt die importierte Webseite fest (Ordner im ZIP und optional eine <code>bilder.json</code>). Bilder mit gleichem Dateinamen werden ersetzt. Die Webseite kann Bilder, Beschriftungen und Reihenfolge über <code>/api/bilder</code> laden.</p>
+        <p id="bilder-empty" class="notice" hidden>Noch keine eigenen Bilder. Importiere das ZIP der Webseite (Tab «ZIP-Import») oder lege unten einen Bereich an.</p>
+      </div>
+      <div id="bilder-sections"></div>
+      <div class="card" id="new-folder-card">
+        <h2>Neuer Bereich</h2>
+        <p class="sub">Legt einen Ordner <code>img/&lt;name&gt;/</code> an (a-z, 0-9, - und _).</p>
+        <div class="row">
+          <input type="text" id="new-folder" placeholder="z. B. galerie" maxlength="40" style="max-width:260px">
+          <button class="btn" type="button" id="new-folder-btn">Bereich anlegen</button>
+        </div>
+      </div>
+      <div class="card" id="page-imgs-card" hidden>
+        <h2>Bilder auf den Seiten</h2>
+        <p class="sub">Diese Bilder werden in der Startseite bzw. in Unterseiten verwendet. Bilder unter <code>img/</code> kannst du oben im passenden Bereich ersetzen (gleicher Dateiname).</p>
+        <div id="page-imgs"></div>
+      </div>
+    </div>
+
+    <!-- ZIP-IMPORT & HTML -->
+    <div id="tab-import" class="tab-pane" hidden>
+      <div class="card">
+        <h2>📦 1-Klick Kunden-ZIP importieren</h2>
+        <p class="sub">Ziehe das Webseite-ZIP (mit <code>index.html</code>, <code>img/</code> und optional <code>bilder.json</code>) hierher. Alle Dateien werden automatisch auf das persistente Volume übernommen.</p>
+        <div class="dropzone" id="zip-drop">
+          <p style="margin:0 0 10px;font-weight:600">ZIP-Datei hier ablegen oder auswählen</p>
+          <input type="file" id="zip-input" accept=".zip">
+        </div>
+      </div>
+      <div class="card">
+        <h2>Direkter HTML-Editor (<code>index.html</code>)</h2>
+        <p class="sub">Hier kannst du sämtliche Texte, Abschnitte und das Design der <code>index.html</code> direkt im Browser bearbeiten.</p>
+        <textarea id="html-editor" class="code" spellcheck="false"></textarea>
+        <div style="margin-top:14px"><button class="btn primary" type="button" id="save-html">index.html speichern</button></div>
+      </div>
+    </div>
+
+    <!-- UNTERSEITEN -->
+    <div id="tab-seiten" class="tab-pane" hidden>
+      <div class="card">
+        <h2>Unterseiten</h2>
+        <p class="sub">Eigene HTML-Seiten, erreichbar unter <code>/seitenname</code> (z. B. <code>/impressum</code>). Erlaubt: Kleinbuchstaben, Zahlen und Bindestrich.</p>
+        <table>
+          <thead><tr><th>Adresse</th><th>Grösse</th><th></th></tr></thead>
+          <tbody id="page-rows"></tbody>
+        </table>
+        <p id="page-empty" class="sub" style="margin-top:12px" hidden>Noch keine Unterseiten.</p>
+      </div>
+      <div class="card">
+        <h2 id="page-form-title">Neue Seite</h2>
+        <label><span>Seitenname</span><input type="text" id="page-slug" placeholder="impressum" maxlength="40" autocomplete="off"></label>
+        <label style="display:block;margin-top:12px"><span>HTML</span><textarea id="page-html" class="code" spellcheck="false" placeholder="&lt;!doctype html&gt;..."></textarea></label>
+        <div class="row" style="margin-top:14px">
+          <button class="btn primary" type="button" id="page-save">Seite speichern</button>
+          <button class="btn" type="button" id="page-new">Neu / Leeren</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- NACHRICHTEN -->
+    <div id="tab-nachrichten" class="tab-pane" hidden>
+      <div class="card">
+        <h2>Kontaktanfragen</h2>
+        <p class="sub">Nachrichten aus dem Kontaktformular (<code>POST /api/kontakt</code>). Bei aktivem E-Mail-Versand gehen sie zusätzlich an die Empfänger-Adresse.</p>
+        <div id="msg-list"></div>
+      </div>
+    </div>
+
+    <!-- BESTELLUNGEN -->
+    <div id="tab-bestellungen" class="tab-pane" hidden>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:14px">
+          <div>
+            <h2 style="margin:0">Eingegangene Bestellungen</h2>
+            <p class="sub" style="margin:4px 0 0">Alle Bestellungen auf dem persistenten Speicher.</p>
+          </div>
+          <a class="btn primary" href="/api/admin/orders.csv">CSV herunterladen</a>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Nr.</th><th>Datum</th><th>Kunde</th><th>Adresse</th><th>Artikel</th><th>Zahlung</th><th>Total</th></tr></thead>
+            <tbody id="order-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- EINSTELLUNGEN -->
+    <div id="tab-settings" class="tab-pane" hidden>
+      <div class="card">
+        <h2>🧩 Funktionen</h2>
+        <p class="sub">Nicht benötigte Funktionen abschalten. Deaktivierte Funktionen sind auf dem Server nicht erreichbar (404) und im Admin ausgeblendet.</p>
+        <div class="stack">
+          <div class="feature">
+            <label class="switch"><input type="checkbox" id="f-shop"><span><b>Webshop</b> – Produkte, Warenkorb, Bestellungen, Bestätigungs-E-Mails</span></label>
+          </div>
+          <div class="feature">
+            <label class="switch"><input type="checkbox" id="f-kontakt"><span><b>Kontaktformular</b> – <code>POST /api/kontakt</code> mit Spam-Schutz; Nachrichten im Admin und per E-Mail</span></label>
+            <details><summary>Einbindung in die Webseite</summary>
+              <pre class="notice" style="white-space:pre-wrap;font-size:.8rem">&lt;form method="post" action="/api/kontakt"&gt;
+  &lt;input name="name" required&gt; &lt;input name="email" type="email" required&gt;
+  &lt;input name="betreff"&gt; &lt;textarea name="nachricht" required&gt;&lt;/textarea&gt;
+  &lt;input name="website" style="display:none" tabindex="-1" autocomplete="off"&gt;
+  &lt;input type="hidden" name="weiter" value="/kontakt"&gt;  &lt;!-- danach ?kontakt=ok --&gt;
+  &lt;button&gt;Senden&lt;/button&gt;
+&lt;/form&gt;</pre>
+            </details>
+          </div>
+          <div class="feature">
+            <label class="switch"><input type="checkbox" id="f-seo"><span><b>SEO</b> – automatische <code>sitemap.xml</code> und <code>robots.txt</code>, fehlende Meta-Tags werden ergänzt</span></label>
+            <div class="grid2" data-sub="seo">
+              <label><span>Seitentitel (falls die Seite keinen hat)</span><input type="text" id="s-seo-titel" maxlength="120"></label>
+              <label><span>Vorschaubild für Social Media (img/…)</span><input type="text" id="s-seo-bild" list="all-imgs" maxlength="200" placeholder="img/vorschau.jpg"></label>
+            </div>
+            <label data-sub="seo"><span>Beschreibung (für Google & Vorschau, ca. 150 Zeichen)</span><textarea id="s-seo-beschreibung" rows="2" maxlength="300"></textarea></label>
+            <p class="sub" data-sub="seo" style="margin:0">Benötigt die Webseiten-URL (unten unter E-Mail & Webseite). Eigene <code>robots.txt</code>/<code>sitemap.xml</code> im ZIP haben Vorrang.</p>
+          </div>
+          <div class="feature">
+            <label class="switch"><input type="checkbox" id="f-wartung"><span><b>Wartungsmodus</b> – Besucher sehen eine Wartungsseite (HTTP 503), angemeldete Admins die normale Webseite</span></label>
+            <label data-sub="wartung"><span>Titel</span><input type="text" id="s-wartung-titel" maxlength="120"></label>
+            <label data-sub="wartung"><span>Text</span><textarea id="s-wartung-text" rows="3" maxlength="2000"></textarea></label>
+          </div>
+        </div>
+        <div style="margin-top:14px"><button class="btn primary" type="button" id="save-features">Funktionen speichern</button></div>
+      </div>
+
+      <div class="card">
+        <h2>🔐 Anmeldung</h2>
+        <p class="sub">Es gibt keinen Benutzernamen. Das Passwort wird nur als Hash (PBKDF2-SHA256, 600 000 Runden) auf dem persistenten Volume gespeichert. Passwort vergessen? Auf dem Server <code>python /app/server.py reset-admin</code> ausführen.</p>
+        <h3>Passwort ändern</h3>
+        <div class="grid2">
+          <label><span>Aktuelles Passwort</span><input type="password" id="pw-cur" autocomplete="current-password"></label>
+          <label><span>Neues Passwort (mind. 12 Zeichen)</span><input type="password" id="pw-new" autocomplete="new-password" minlength="12"></label>
+          <label><span>Neues Passwort wiederholen</span><input type="password" id="pw-new2" autocomplete="new-password" minlength="12"></label>
+        </div>
+        <div style="margin-top:12px"><button class="btn primary" type="button" id="save-pw">Passwort ändern</button></div>
+
+        <h3>Zwei-Faktor-Anmeldung (TOTP)</h3>
+        <p class="sub">Optional: zusätzlich ein 6-stelliger Code aus einer Authenticator-App (z. B. Aegis, 2FAS, Google/Microsoft Authenticator, Bitwarden). Alles läuft lokal auf dem Server, ohne externen Dienst.</p>
+        <p id="totp-status" class="notice"></p>
+        <div class="grid2" style="margin-top:12px">
+          <label><span>Aktuelles Passwort (zur Bestätigung)</span><input type="password" id="totp-pw" autocomplete="current-password"></label>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" type="button" id="totp-begin">2FA einrichten</button>
+          <button class="btn danger" type="button" id="totp-disable" hidden>2FA deaktivieren</button>
+        </div>
+        <div id="totp-setup" class="notice" style="margin-top:12px" hidden>
+          <p style="margin-top:0">1. Füge in der Authenticator-App ein neues Konto manuell hinzu (Typ «zeitbasiert») mit diesem Schlüssel:</p>
+          <p><code class="secret" id="totp-secret"></code></p>
+          <p>Auf dem Handy kannst du auch direkt diesen Link öffnen: <a id="totp-uri" href="#">In Authenticator-App öffnen</a></p>
+          <p>2. Gib zur Bestätigung den aktuellen Code ein:</p>
+          <div class="row"><input type="text" id="totp-code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" style="max-width:160px">
+            <button class="btn primary" type="button" id="totp-enable">Aktivieren</button></div>
+        </div>
+      </div>
+
+      <div class="card" data-feature="shop kontakt seo">
+        <h2>✉️ E-Mail & Webseite</h2>
+        <p class="sub">Absender, Empfänger und SMTP-Zugang für Bestellungen und Kontaktanfragen. Für Gmail: 16-stelliges App-Passwort verwenden.</p>
+        <div class="grid2">
+          <label><span>Name der Webseite (Absendername)</span><input type="text" id="s-shop-name"></label>
+          <label><span>Webseiten-URL</span><input type="url" id="s-shop-url" placeholder="https://www.example.ch"></label>
+          <label><span>Adresse (E-Mail-Fusszeile)</span><input type="text" id="s-shop-address" placeholder="z. B. Musterstrasse 1, 8000 Zürich"></label>
+          <label data-feature="shop"><span>Bestellnummer-Präfix</span><input type="text" id="s-order-prefix" placeholder="ORD"></label>
+          <label><span>Empfänger-E-Mail</span><input type="email" id="s-mail-to" placeholder="info@example.ch"></label>
+          <label><span>SMTP-Server</span><input type="text" id="s-smtp-host" placeholder="smtp.gmail.com"></label>
+          <label><span>SMTP-Port (465 = SSL, 587 = STARTTLS)</span><input type="number" id="s-smtp-port" placeholder="465"></label>
+          <label><span>SMTP-Benutzer</span><input type="email" id="s-smtp-user" placeholder="info@gmail.com"></label>
+          <label><span>SMTP-Passwort / App-Passwort <small id="s-pw-status"></small></span>
+            <input type="password" id="s-smtp-pass" autocomplete="new-password" placeholder="leer lassen = unverändert"></label>
+          <label class="switch" style="display:flex;align-items:center;gap:10px;padding-top:22px">
+            <input type="checkbox" id="s-live-mail" style="width:20px;height:20px">
+            <span><b>Live-E-Mail-Versand aktivieren</b> (sonst Testmodus: E-Mails werden nur protokolliert)</span>
+          </label>
+        </div>
+        <div class="row" style="margin-top:18px">
+          <button class="btn primary" type="button" id="save-settings">Einstellungen speichern</button>
+          <button class="btn" type="button" id="send-test-mail">Test-E-Mail an Empfänger senden</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <datalist id="all-imgs"></datalist>
+  <div id="toast" class="toast" hidden></div>
+  <script src="/admin/admin.js"></script>
+</body>
+</html>
