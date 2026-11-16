@@ -29,49 +29,59 @@ site-engine/
 
 ---
 
-## 🔐 Admin-Zugang
+## 🔐 Admin-Zugang: Anmeldung mit Google
 
-Es gibt **keinen Benutzernamen** und **kein Passwort im Repo, Image oder in Umgebungsvariablen**.
-Das Passwort liegt nur als Hash (PBKDF2-SHA256, 600 000 Runden) in `/data/site/config/auth.json` (0600) auf dem
-persistenten Volume – **Neustarts und Updates ändern daran nichts**.
+Das Admin wird mit **«Sign in with Google»** geschützt. Es gibt keine Passwörter und **kein Secret**: Der Browser bekommt
+von Google ein signiertes ID-Token, der Server prüft es mit Googles öffentlichen Schlüsseln (Signatur RS256, Aussteller,
+Client ID, Ablauf, Nonce, bestätigte E-Mail) und vergleicht die E-Mail mit der Liste erlaubter Konten. Die zweite
+Absicherung (2FA) übernimmt Google.
 
-**Neue Webseite:** Beim ersten Start schreibt der Server einen **Einrichtungs-Link** (24 h gültig) ins Log:
+### Neue Webseite einrichten
 
+1. **Einmalig für alle Seiten** in der [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
+   OAuth-Zustimmungsbildschirm (Typ «Extern», nur die Standardbereiche `openid`, `email`, `profile`) und eine
+   **OAuth-Client-ID vom Typ «Webanwendung»** anlegen. Eine Client-ID reicht für alle Seiten.
+   Solange die App im Status «Testen» ist, dürfen sich nur eingetragene Testnutzer anmelden – die erlaubten Konten dort
+   eintragen oder die App veröffentlichen (für die Standardbereiche ist keine Prüfung durch Google nötig).
+2. **Pro Seite** bei dieser Client-ID unter **«Autorisierte JavaScript-Quellen»** die Domain eintragen
+   (z. B. `https://shop.example.ch`). Weiterleitungs-URIs braucht es nicht.
+3. **Pro Seite** in der ConfigMap:
+
+```yaml
+GOOGLE_CLIENT_ID: "1234567890-abc….apps.googleusercontent.com"   # öffentlich, kein Geheimnis
+ADMIN_EMAILS: "ich@gmail.com, kunde@gmail.com"                     # erlaubte Google-Konten
 ```
-WARNING ADMIN-EINRICHTUNG: noch kein Passwort gesetzt – Einmal-Link (gültig 24 h):
-WARNING   https://shop.example.ch/admin/setup#…
-```
 
-In Argo CD: *App öffnen → Pod → Logs*, Link anklicken, Passwort setzen – fertig. Ist der Link abgelaufen, erzeugt
-der Button **«Neuen Einrichtungs-Link erzeugen»** auf `/admin/login` einen neuen (wieder im Log).
-Damit der Link die richtige Domain hat, `SHOP_URL` in der ConfigMap setzen (sonst steht `<deine-domain>` im Link).
+Nach dem Sync von Argo CD kann man sich sofort unter `/admin` anmelden – kein Log, kein Link, kein `kubectl`.
+Alternativ lassen sich Client ID und weitere Konten auch im Admin unter *Einstellungen → Anmeldung* pflegen
+(Werte aus der ConfigMap sind dort schreibgeschützt).
 
-**Passwort vergessen:** Button **«Passwort vergessen?»** auf der Anmeldeseite.
-* Ist unter *Einstellungen → Anmeldung* eine **Wiederherstellungs-E-Mail** hinterlegt (oder `ADMIN_EMAIL` in der ConfigMap)
-  und SMTP sowie die Webseiten-URL eingerichtet, kommt ein Einmal-Link per E-Mail (30 Min. gültig).
-* Zusätzlich steht **immer** ein Link im Server-Log.
-* Ist 2FA aktiv, verlangt der **E-Mail-Link** zusätzlich den 2FA-Code – wer nur das Postfach kontrolliert, kommt nicht rein.
-  Der **Log-Link** (setzt Zugriff auf Argo CD/Cluster voraus) setzt 2FA zurück, falls das Handy weg ist.
-* Notfall ohne UI: `kubectl exec deploy/<name> -n <ns> -- python /app/server.py reset-admin`.
+### Notfall
 
-Schutzmassnahmen:
-* Der Code steht hinter dem `#` des Links und gelangt nie an Server, Proxy oder Access-Logs; gespeichert wird nur sein Hash.
-  Jeder Link funktioniert genau einmal; nach dem Setzen sind alle Links und Sitzungen ungültig.
-* Die Domain im E-Mail-Link stammt nur aus der Konfiguration, nie aus dem `Host`-Header (kein Host-Header-Poisoning).
-* Link-Anforderungen sind begrenzt (3 pro 15 Min.); bestehende Links werden nie überschrieben, sodass niemand per
-  Knopfdruck einen gültigen Link entwerten kann.
-* Login-Formular mit Sitzungs-Cookie (`__Host-…`, `HttpOnly`, `Secure`, `SameSite=Strict`), Ablauf nach 2 h Inaktivität bzw. 12 h.
-* CSRF-Token und `Origin`-Prüfung für alle Änderungen.
-* Sperre nach 5 Fehlversuchen pro IP (15 Min.) und globale Obergrenze von 50 Fehlversuchen / 15 Min. gegen IP-Rotation.
-* Optionale **Zwei-Faktor-Anmeldung (TOTP)** mit jeder Authenticator-App, lokal ohne externen Dienst, mit Replay-Schutz.
-* Admin-Seiten erlauben kein Inline-JavaScript (CSP `script-src 'self'`).
-* Passwortänderung und Änderung der Wiederherstellungs-E-Mail erfordern das aktuelle Passwort.
+* **Notfall-Codes:** Nach dem ersten Login unter *Einstellungen → Anmeldung* «Neue Notfall-Codes erzeugen» und die
+  10 Einmal-Codes z. B. in Vaultwarden ablegen. Auf der Login-Seite: «Google funktioniert nicht? Notfall-Code verwenden».
+* **Letzter Ausweg:** `kubectl exec deploy/<name> -n <ns> -- python /app/server.py notfall-link` gibt einen einmaligen,
+  15 Minuten gültigen Link aus, der direkt eine Sitzung öffnet. Kann sich niemand anmelden (keine Client ID, keine
+  Konten, keine Codes), steht ein solcher Link beim Start auch im Pod-Log.
 
-Lokal ohne HTTPS (z. B. `http://192.168.…`) braucht es `COOKIE_SECURE=0`; für `http://localhost` nicht.
+### Schutzmassnahmen
 
-**Upgrade von 1.x:** `ADMIN_USER`, `ADMIN_PASSWORD` und `ADMIN_PASSWORD_HASH` werden ignoriert (Warnung im Log) und können
-aus ConfigMaps/Secrets entfernt werden. Ein früher im Admin gesetztes Passwort (in `settings.json` auf dem Volume) wird
-automatisch übernommen und beim nächsten Login neu gehasht. Sonst einmal den Link aus dem Log verwenden.
+* Nonce pro Anmeldung (an ein HttpOnly-Cookie gebunden): ein abgefangenes Token funktioniert in keinem anderen Browser
+  und jedes Token nur ein einziges Mal.
+* RSA-Signaturprüfung vergleicht die vollständige PKCS#1-Kodierung (keine Padding-Tricks), nur Schlüssel ≥ 2048 Bit.
+  Googles Schlüssel werden gemäss `Cache-Control` gecacht.
+* Sitzungs-Cookie `__Host-…`, `HttpOnly`, `Secure`, `SameSite=Strict`; Ablauf nach 2 h Inaktivität bzw. 12 h.
+* CSRF-Token und `Origin`-Prüfung für alle Änderungen; Sperre nach 5 Fehlversuchen pro IP und globale Obergrenze.
+* Auf der Login-Seite ist ausser eigenem Code nur `https://accounts.google.com/gsi/client` erlaubt (CSP); alle anderen
+  Admin-Seiten erlauben nur eigenes JavaScript.
+* Notfall-Codes und -Links werden nur als SHA-256-Hash gespeichert und sind einmalig.
+* Selbstaussperr-Schutz: Man kann das eigene Konto nicht entfernen und nicht alle Zugänge gleichzeitig.
+
+Lokal ohne HTTPS (z. B. `http://192.168.…`) braucht es `COOKIE_SECURE=0`. Für lokale Tests mit Google muss
+`http://localhost:8080` als JavaScript-Quelle der Client-ID eingetragen sein.
+
+**Upgrade:** `ADMIN_USER`, `ADMIN_PASSWORD`, `ADMIN_PASSWORD_HASH` und `ADMIN_EMAIL` werden ignoriert (Warnung im Log);
+alte Passwort-Hashes auf dem Volume werden beim Start entfernt.
 
 ---
 
@@ -141,7 +151,7 @@ git tag v2.0.0-rc.1 && git push origin v2.0.0-rc.1
 # -> nur :2.0.0-rc.1 (Vorabversion zum Testen, :latest bleibt unverändert)
 ```
 
-Da es keine Shell gibt, funktioniert `kubectl exec … -- sh` nicht; `kubectl exec … -- python /app/server.py reset-admin` schon.
+Da es keine Shell gibt, funktioniert `kubectl exec … -- sh` nicht; `kubectl exec … -- python /app/server.py notfall-link` schon.
 
 ---
 
@@ -149,7 +159,7 @@ Da es keine Shell gibt, funktioniert `kubectl exec … -- sh` nicht; `kubectl ex
 
 ```bash
 mkdir -p data
-DATA_DIR=data SHOP_URL=http://localhost:8080 python3 app/server.py   # Einrichtungs-Link steht im Log
-# -> Link öffnen, Passwort setzen, dann http://localhost:8080/admin
+DATA_DIR=data GOOGLE_CLIENT_ID=… ADMIN_EMAILS=ich@gmail.com python3 app/server.py
+# -> http://localhost:8080/admin  (ohne Google: Notfall-Link steht im Log)
 python3 -m unittest discover tests
 ```

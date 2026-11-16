@@ -5,23 +5,20 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
-  <title>Passwort setzen · Administration</title>
+  <title>Notfall-Zugang · Administration</title>
   <script src="/admin/theme.js"></script>
   <link rel="stylesheet" href="/admin/admin.css">
 </head>
 <body data-page="setup">
   <div class="narrow">
     <div class="card">
-      <h2>🔑 Admin-Passwort setzen</h2>
-      <p class="sub">Der Link funktioniert genau einmal. Nach dem Speichern werden alle anderen Sitzungen abgemeldet.</p>
+      <h2>🛟 Notfall-Zugang</h2>
+      <p class="sub">Dieser Link funktioniert genau einmal und öffnet direkt eine Admin-Sitzung. Prüfe danach unter
+        <i>Einstellungen → Anmeldung</i> die Google-Einrichtung und erzeuge Notfall-Codes.</p>
       <form id="setup-form" class="stack">
         <label id="token-row"><span>Einmal-Code (Teil nach <code>#</code> im Link)</span><input type="text" id="token" autocomplete="off"></label>
-        <label><span>Neues Passwort (mind. 12 Zeichen)</span><input type="password" id="pw1" autocomplete="new-password" minlength="12" required></label>
-        <label><span>Passwort wiederholen</span><input type="password" id="pw2" autocomplete="new-password" minlength="12" required></label>
-        <label id="code-row" hidden><span>Code aus der Authenticator-App (2FA ist aktiv)</span>
-          <input type="text" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7"></label>
         <p id="error" class="notice err" hidden></p>
-        <button class="btn primary" type="submit" id="submit" style="justify-content:center">Passwort speichern</button>
+        <button class="btn primary" type="submit" id="submit" style="justify-content:center">Anmelden</button>
       </form>
     </div>
   </div>
