@@ -38,6 +38,7 @@ def reset_globals(tmp):
     server.SESSIONS.clear()
     server.FAILS.clear()
     server.GLOBAL_FAILS.clear()
+    server.RECOVERY_TIMES.clear()
 
 
 class TestSiteEngineSecurity(unittest.TestCase):
@@ -220,9 +221,28 @@ class TestAuthPrimitives(unittest.TestCase):
         self.assertFalse(server.consume_setup_token(tok), "Token darf nur einmal funktionieren")
         tok = server.create_setup_token()
         d = json.loads(server.setup_token_file().read_text())
-        d["expires"] = time.time() - 1
+        d["tokens"][0]["expires"] = time.time() - 1
         server.setup_token_file().write_text(json.dumps(d))
         self.assertFalse(server.consume_setup_token(tok))
+
+    def test_tokens_cannot_be_evicted(self):
+        first = server.create_setup_token("log")
+        for _ in range(server.MAX_SETUP_TOKENS - 1):
+            self.assertIsNotNone(server.create_setup_token("log"))
+        self.assertIsNone(server.create_setup_token("log"), "voll: kein neuer Link ohne force")
+        self.assertEqual(server.check_setup_token(first), "log", "bestehender Link bleibt gültig")
+        self.assertIsNotNone(server.create_setup_token("log", force=True))
+        self.assertEqual(len(server._load_setup_tokens()), server.MAX_SETUP_TOKENS)
+
+    def test_startup_announces_setup_link(self):
+        with self.assertLogs("site-engine", "WARNING") as cm:
+            tok = server.announce_setup_if_needed()
+        self.assertTrue(any(f"/admin/setup#{tok}" in line for line in cm.output))
+        self.assertEqual(server.check_setup_token(tok), "log")
+        exp = server._load_setup_tokens()[0]["expires"]
+        self.assertGreater(exp - time.time(), 23 * 3600, "Erst-Link ist 24 h gültig")
+        server.save_auth({"pw": server.hash_password(PASSWORD)})
+        self.assertIsNone(server.announce_setup_if_needed(), "mit Passwort: kein Link")
 
     def test_legacy_migration(self):
         import hashlib
@@ -455,6 +475,94 @@ class TestAuthHTTP(HTTPBase):
         # Reset über Einrichtungs-Link schaltet 2FA ab
         self.setup_admin()
         self.assertEqual(json.loads(self.req("GET", "/admin/login-info", auth=False)[1])["totp"], False)
+
+
+class TestRecoveryHTTP(HTTPBase):
+    def setUp(self):
+        super().setUp()
+        self.sent = []
+        self._orig_send = server.send_mail
+        server.send_mail = lambda to, subj, body, reply_to=None, force_live=False: self.sent.append((to, subj, body, force_live))
+
+    def tearDown(self):
+        server.send_mail = self._orig_send
+        super().tearDown()
+
+    def wait_mail(self, n=1):
+        for _ in range(50):
+            if len(self.sent) >= n:
+                return
+            time.sleep(0.05)
+        self.fail("keine E-Mail verschickt")
+
+    def log_token(self, output):
+        return [l for l in output if "/admin/setup#" in l][0].split("#", 1)[1].strip()
+
+    def test_new_site_link_via_button_and_log(self):
+        with self.assertLogs("site-engine", "WARNING") as cm:
+            st, _ = self.req("POST", "/admin/recover", {}, auth=False)
+        self.assertEqual(st, 200)
+        tok = self.log_token(cm.output)
+        self.assertEqual(self.req("POST", "/admin/setup", {"token": tok, "passwort": PASSWORD}, auth=False)[0], 200)
+        self.assertEqual(self.sent, [], "ohne E-Mail/SMTP nur Log")
+        server.RECOVERY_TIMES.clear()
+        for _ in range(server.RECOVERY_MAX):
+            self.assertEqual(self.req("POST", "/admin/recover", {}, auth=False)[0], 200)
+        self.assertEqual(self.req("POST", "/admin/recover", {}, auth=False)[0], 429)
+        self.assertEqual(self.req("POST", "/admin/recover", {}, auth=False,
+                                  headers={"Origin": "https://evil.example"})[0], 403)
+
+    def configure_mail(self):
+        self.setup_admin()
+        self.req("POST", "/api/admin/settings", {"shop_url": "https://www.beispiel.ch", "smtp_user": "a@b.ch", "smtp_pass": "x"})
+        self.assertEqual(self.req("POST", "/api/admin/recovery-email", {"aktuell": "falsch", "email": "ich@beispiel.ch"})[0], 403)
+        self.assertEqual(self.req("POST", "/api/admin/recovery-email", {"aktuell": PASSWORD, "email": "kaputt"})[0], 400)
+        self.assertEqual(self.req("POST", "/api/admin/recovery-email", {"aktuell": PASSWORD, "email": "ich@beispiel.ch"})[0], 200)
+        auth = json.loads(self.req("GET", "/api/admin/state")[1])["auth"]
+        self.assertEqual((auth["email"], auth["smtp_ok"], auth["url_ok"]), ("ich@beispiel.ch", True, True))
+
+    def mail_token(self):
+        self.wait_mail()
+        to, subj, body, live = self.sent[-1]
+        self.assertEqual(to, "ich@beispiel.ch")
+        self.assertTrue(live, "Wiederherstellung auch im Testmodus")
+        link = [l for l in body.splitlines() if "/admin/setup#" in l][0]
+        self.assertTrue(link.startswith("https://www.beispiel.ch/admin/setup#"), "Domain nur aus Konfiguration")
+        return link.split("#", 1)[1]
+
+    def test_forgot_password_by_email(self):
+        self.configure_mail()
+        # Host-Header-Poisoning: der Link darf nie auf die Domain des Angreifers zeigen
+        self.assertEqual(self.req("POST", "/admin/recover", {}, auth=False, headers={"Host": "evil.example"})[0], 200)
+        tok = self.mail_token()
+        self.assertEqual(server.check_setup_token(tok), "email")
+        self.assertEqual(self.req("POST", "/admin/setup", {"token": tok, "passwort": "ganz-neues-passwort"}, auth=False)[0], 200)
+        self.assertEqual(self.req("POST", "/admin/login", {"passwort": "ganz-neues-passwort"}, auth=False)[0], 200)
+        self.assertEqual(server.load_auth().get("email"), "ich@beispiel.ch", "E-Mail bleibt erhalten")
+        self.assertIsNone(server.check_setup_token(tok), "Links sind danach verbraucht")
+
+    def test_email_link_needs_2fa_log_link_resets_it(self):
+        self.configure_mail()
+        secret = json.loads(self.req("POST", "/api/admin/totp-begin", {"aktuell": PASSWORD})[1])["secret"]
+        self.req("POST", "/api/admin/totp-enable", {"code": server.totp_at(secret, int(time.time() // 30))})
+        with self.assertLogs("site-engine", "WARNING") as cm:
+            self.req("POST", "/admin/recover", {}, auth=False)
+        tok, log_tok = self.mail_token(), self.log_token(cm.output)
+        st, body = self.req("POST", "/admin/setup", {"token": tok, "passwort": "ganz-neues-passwort"}, auth=False)
+        self.assertEqual(st, 401)
+        self.assertTrue(json.loads(body)["need_code"])
+        code = server.totp_at(secret, int(time.time() // 30) + 1)
+        st, _ = self.req("POST", "/admin/setup", {"token": tok, "passwort": "ganz-neues-passwort", "code": code}, auth=False)
+        self.assertEqual(st, 200)
+        self.assertTrue(server.load_auth()["totp"]["enabled"], "E-Mail-Link lässt 2FA bestehen")
+        self.assertIsNone(server.check_setup_token(log_tok))
+        # Link aus dem Log (Cluster-/Argo-CD-Zugriff) setzt 2FA zurück
+        server.RECOVERY_TIMES.clear()
+        with self.assertLogs("site-engine", "WARNING") as cm:
+            self.req("POST", "/admin/recover", {}, auth=False)
+        st, _ = self.req("POST", "/admin/setup", {"token": self.log_token(cm.output), "passwort": "drittes-passwort-xx"}, auth=False)
+        self.assertEqual(st, 200)
+        self.assertNotIn("totp", server.load_auth())
 
 
 class TestFeaturesAndPages(HTTPBase):

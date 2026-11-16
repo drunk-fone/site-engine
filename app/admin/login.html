@@ -14,9 +14,11 @@
       <h2>🔐 Administration</h2>
       <div id="setup-needed" class="notice" hidden>
         <p style="margin-top:0"><b>Es ist noch kein Admin-Passwort gesetzt.</b></p>
-        <p>Erzeuge auf dem Server einen Einmal-Link:</p>
-        <p><code>kubectl exec -it deploy/&lt;name&gt; -n &lt;namespace&gt; -- python /app/server.py reset-admin</code></p>
-        <p style="margin-bottom:0">Lokal: <code>python3 app/server.py reset-admin</code></p>
+        <p>Beim Start hat der Server einen <b>Einrichtungs-Link</b> (24 h gültig) ins Log geschrieben.
+          In Argo CD: <i>App öffnen → Pod anklicken → Logs</i>, dann den Link öffnen.</p>
+        <p>Abgelaufen oder nicht mehr im Log? Hier einen neuen erzeugen:</p>
+        <button class="btn" type="button" id="new-link" style="justify-content:center">Neuen Einrichtungs-Link erzeugen</button>
+        <p id="new-link-msg" class="sub" hidden></p>
       </div>
       <form id="login-form" class="stack" autocomplete="on">
         <label><span>Passwort</span><input type="password" id="passwort" autocomplete="current-password" required></label>
@@ -24,7 +26,8 @@
           <input type="text" id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7"></label>
         <p id="error" class="notice err" hidden></p>
         <button class="btn primary" type="submit" id="submit" style="justify-content:center">Anmelden</button>
-        <p class="sub" style="margin:0;color:var(--muted);font-size:.85rem">Passwort vergessen? Mit <code>python /app/server.py reset-admin</code> auf dem Server einen neuen Einmal-Link erzeugen.</p>
+        <button class="btn" type="button" id="forgot" style="justify-content:center;border-color:var(--line)">Passwort vergessen?</button>
+        <p id="forgot-msg" class="notice" hidden></p>
       </form>
     </div>
   </div>

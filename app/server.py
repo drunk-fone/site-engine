@@ -55,7 +55,11 @@ SESSION_MAX_AGE = int(ENV("SESSION_MAX_AGE", "43200"))  # max. 12 h
 PBKDF2_ITER = 600_000                                   # OWASP-Empfehlung für PBKDF2-SHA256
 MIN_PASSWORD = 12
 MAX_PASSWORD = 1024
-SETUP_TTL = 900
+SETUP_TTL = 1800             # Links aus «Passwort vergessen» / reset-admin: 30 Min.
+SETUP_TTL_INITIAL = 86400    # Einrichtungs-Link beim Start ohne Passwort: 24 h
+MAX_SETUP_TOKENS = 5
+RECOVERY_MAX = 3             # Link-Anforderungen pro Zeitfenster (global)
+RECOVERY_WINDOW = 900
 LOGIN_MAX_FAILS = 5
 LOGIN_WINDOW = 900
 LOGIN_GLOBAL_MAX = 50
@@ -493,27 +497,115 @@ def sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def create_setup_token() -> str:
-    """Einmal-Token für /admin/setup. Gespeichert wird nur der SHA-256-Hash."""
+def _load_setup_tokens() -> list:
+    d = read_json(setup_token_file(), {})
+    toks = d.get("tokens") if isinstance(d, dict) else None
+    if not isinstance(toks, list):  # älteres Einzel-Format
+        toks = [dict(d, art="log")] if isinstance(d, dict) and d.get("hash") else []
+    now = time.time()
+    return [t for t in toks if isinstance(t, dict) and t.get("hash") and float(t.get("expires", 0)) > now]
+
+
+def create_setup_token(art: str = "log", ttl: int = SETUP_TTL, force: bool = False):
+    """Einmal-Token für /admin/setup; gespeichert wird nur der SHA-256-Hash.
+    art='log'   – steht im Server-Log oder kam von reset-admin (Zugriff auf Cluster/Argo CD):
+                  setzt beim Einlösen auch 2FA zurück.
+    art='email' – wurde per E-Mail verschickt: verlangt bei aktiver 2FA zusätzlich den Code.
+    Bestehende Links werden nie überschrieben; sind schon MAX_SETUP_TOKENS aktiv, gibt es
+    (ausser mit force) keinen neuen – so kann niemand per Knopfdruck gültige Links entwerten."""
+    toks = _load_setup_tokens()
+    if len(toks) >= MAX_SETUP_TOKENS:
+        if not force:
+            return None
+        toks = sorted(toks, key=lambda t: float(t["expires"]))[-(MAX_SETUP_TOKENS - 1):]
     tok = secrets.token_urlsafe(32)
-    write_private_json(setup_token_file(), {"hash": sha256_hex(tok), "expires": time.time() + SETUP_TTL})
+    toks.append({"hash": sha256_hex(tok), "expires": time.time() + ttl, "art": art})
+    write_private_json(setup_token_file(), {"tokens": toks})
     return tok
 
 
-def consume_setup_token(tok) -> bool:
+def check_setup_token(tok):
+    """Gibt die Art ('log'/'email') eines gültigen Tokens zurück, sonst None."""
     if not isinstance(tok, str) or not tok or len(tok) > 200:
-        return False
-    f = setup_token_file()
-    d = read_json(f, {})
-    if not isinstance(d, dict) or not d.get("hash"):
-        return False
-    if time.time() > float(d.get("expires", 0)):
-        f.unlink(missing_ok=True)
-        return False
-    if not hmac.compare_digest(sha256_hex(tok).encode(), str(d["hash"]).encode()):
-        return False
-    f.unlink(missing_ok=True)
-    return True
+        return None
+    h = sha256_hex(tok).encode()
+    for t in _load_setup_tokens():
+        if hmac.compare_digest(h, str(t["hash"]).encode()):
+            return t.get("art", "log")
+    return None
+
+
+def clear_setup_tokens():
+    setup_token_file().unlink(missing_ok=True)
+
+
+def consume_setup_token(tok) -> bool:
+    if check_setup_token(tok):
+        clear_setup_tokens()
+        return True
+    return False
+
+
+def setup_link(tok: str) -> str:
+    return f"{site_base_url()}/admin/setup#{tok}"
+
+
+def recovery_email(a=None) -> str:
+    a = load_auth() if a is None else a
+    e = str(a.get("email") or ENV("ADMIN_EMAIL", "") or "").strip()
+    return e if EMAIL_RE.match(e) else ""
+
+
+RECOVERY_TIMES, RECOVERY_LOCK = [], threading.Lock()
+
+
+def recovery_allowed() -> bool:
+    now = time.time()
+    with RECOVERY_LOCK:
+        RECOVERY_TIMES[:] = [t for t in RECOVERY_TIMES if now - t < RECOVERY_WINDOW]
+        if len(RECOVERY_TIMES) >= RECOVERY_MAX:
+            return False
+        RECOVERY_TIMES.append(now)
+        return True
+
+
+def log_setup_link(tok: str, ttl: int, reason: str):
+    base = site_base_url()
+    log.warning("=" * 72)
+    log.warning("ADMIN-%s – Einmal-Link (gültig %s):", reason, f"{ttl // 3600} h" if ttl >= 3600 else f"{ttl // 60} Min.")
+    log.warning("  %s/admin/setup#%s", base or "https://<deine-domain>", tok)
+    if not base:
+        log.warning("  (Webseiten-URL ist nicht gesetzt: Domain der Seite vor /admin/setup einsetzen)")
+    log.warning("=" * 72)
+
+
+def request_recovery(ip: str):
+    """«Passwort vergessen» / «Neuen Link erzeugen»: immer ein Link ins Server-Log, zusätzlich per
+    E-Mail an die Wiederherstellungs-Adresse, falls diese, SMTP und die Webseiten-URL gesetzt sind.
+    Die Link-Domain kommt nur aus der Konfiguration – nie aus dem Host-Header der Anfrage."""
+    with AUTH_LOCK:
+        a = load_auth()
+        ttl = SETUP_TTL if a.get("pw") else SETUP_TTL_INITIAL
+        tok = create_setup_token("log", ttl)
+        if tok:
+            log_setup_link(tok, ttl, "WIEDERHERSTELLUNG angefordert von " + ip if a.get("pw") else "EINRICHTUNG")
+        email, base = recovery_email(a), site_base_url()
+        cfg = get_effective_settings()
+        etok = create_setup_token("email", SETUP_TTL) if email and base and cfg["smtp_user"] and cfg["smtp_pass"] else None
+    if etok:
+        body = (f"Für die Administration von {cfg['shop_name']} wurde ein Link zum Setzen des Passworts angefordert "
+                f"(von IP {ip}).\n\nLink (einmalig, {SETUP_TTL // 60} Minuten gültig):\n{setup_link(etok)}\n\n"
+                "Ist die Zwei-Faktor-Anmeldung aktiv, brauchst du zusätzlich den Code aus deiner Authenticator-App.\n\n"
+                "Warst du das nicht? Dann ignoriere diese E-Mail – dein Passwort bleibt unverändert.\n")
+
+        def _send():
+            try:
+                send_mail(email, f"Passwort-Link für {cfg['shop_name']}", body, force_live=True)
+                log.info("Wiederherstellungs-E-Mail verschickt")
+            except Exception as e:
+                log.error("Wiederherstellungs-E-Mail fehlgeschlagen: %s", e)
+        # im Hintergrund: gleiche Antwortzeit, egal ob eine E-Mail hinterlegt ist
+        threading.Thread(target=_send, daemon=True).start()
 
 
 SESSIONS, SESS_LOCK = {}, threading.Lock()
@@ -1630,7 +1722,13 @@ class Handler(BaseHTTPRequestHandler):
                     "wartung_titel": cfg["wartung_titel"],
                     "wartung_text": cfg["wartung_text"],
                 },
-                "auth": {"totp": bool((a.get("totp") or {}).get("enabled"))},
+                "auth": {
+                    "totp": bool((a.get("totp") or {}).get("enabled")),
+                    "email": a.get("email") or "",
+                    "email_env": ENV("ADMIN_EMAIL", ""),
+                    "smtp_ok": bool(cfg["smtp_user"] and cfg["smtp_pass"]),
+                    "url_ok": bool(site_base_url()),
+                },
                 "bilder": build_bilder_state(),
                 "html": html,
                 "orders": read_orders()[:200] if shop_on else [],
@@ -1666,7 +1764,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         path = unquote(parsed.path)
 
-        if path in ("/admin/login", "/admin/setup", "/admin/logout"):
+        if path in ("/admin/login", "/admin/setup", "/admin/logout", "/admin/recover"):
             return self.handle_auth_post(path)
 
         if path.startswith("/api/admin/"):
@@ -1788,6 +1886,12 @@ class Handler(BaseHTTPRequestHandler):
         if login_blocked(ip):
             return self.json(429, {"ok": False, "error": "Zu viele Fehlversuche. Bitte warte 15 Minuten."})
 
+        if path == "/admin/recover":
+            if not recovery_allowed():
+                return self.json(429, {"ok": False, "error": "Es wurden gerade schon Links angefordert. Bitte warte 15 Minuten."})
+            request_recovery(ip)
+            return self.json(200, {"ok": True})
+
         if path == "/admin/setup":
             pw = payload.get("passwort")
             try:
@@ -1795,16 +1899,32 @@ class Handler(BaseHTTPRequestHandler):
             except Fehler as e:
                 return self.json(400, {"ok": False, "error": str(e)})
             with AUTH_LOCK:
-                if not consume_setup_token(payload.get("token")):
+                art = check_setup_token(payload.get("token"))
+                if not art:
                     login_failed(ip)
-                    return self.json(403, {"ok": False, "error": "Der Einrichtungs-Link ist ungültig oder abgelaufen. "
-                                                                 "Erzeuge einen neuen mit: python /app/server.py reset-admin"})
-                # Zurücksetzen deaktiviert auch 2FA (falls das Gerät verloren ging).
-                save_auth({"pw": hash_password(pw), "geaendert": int(time.time())})
+                    return self.json(403, {"ok": False, "error": "Der Link ist ungültig, abgelaufen oder wurde schon benutzt. "
+                                                                 "Auf der Anmeldeseite kannst du einen neuen anfordern."})
+                a = load_auth()
+                totp = a.get("totp") or {}
+                new = {"pw": hash_password(pw), "geaendert": int(time.time())}
+                if a.get("email"):
+                    new["email"] = a["email"]
+                if art == "email" and totp.get("enabled"):
+                    # Wer nur das Postfach kontrolliert, soll 2FA nicht aushebeln können.
+                    c = totp_check(totp.get("secret", ""), payload.get("code"), int(totp.get("last", -1)))
+                    if c is None:
+                        if payload.get("code"):
+                            login_failed(ip)
+                        return self.json(401, {"ok": False, "need_code": True,
+                                               "error": "Bitte gib den Code aus deiner Authenticator-App ein."})
+                    new["totp"] = dict(totp, last=c)
+                # Link aus Log/reset-admin: 2FA wird zurückgesetzt (z. B. Handy verloren).
+                save_auth(new)
+                clear_setup_tokens()
             drop_sessions()
             login_succeeded(ip)
             tok, _ = new_session()
-            log.info("Admin-Passwort über Einrichtungs-Link gesetzt (%s)", ip)
+            log.info("Admin-Passwort über Einmal-Link (%s) gesetzt von %s", art, ip)
             return self.json(200, {"ok": True}, extra={"Set-Cookie": self.session_cookie(tok)})
 
         # /admin/login
@@ -1813,7 +1933,7 @@ class Handler(BaseHTTPRequestHandler):
             a = load_auth()
             if not a.get("pw"):
                 return self.json(409, {"ok": False, "setup": True,
-                                       "error": "Noch kein Passwort gesetzt. Führe aus: python /app/server.py reset-admin"})
+                                       "error": "Noch kein Passwort gesetzt."})
             ok, rehash = verify_password(pw if isinstance(pw, str) else "", a["pw"])
             totp = a.get("totp") or {}
             counter = None
@@ -1858,7 +1978,8 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return self.json(400, {"ok": False, "error": "Ungültiges JSON"})
 
-        if path in ("/api/admin/password", "/api/admin/totp-begin", "/api/admin/totp-enable", "/api/admin/totp-disable"):
+        if path in ("/api/admin/password", "/api/admin/totp-begin", "/api/admin/totp-enable", "/api/admin/totp-disable",
+                    "/api/admin/recovery-email"):
             return self.handle_account_post(path, payload, sess)
 
         with STORE_LOCK:
@@ -2074,6 +2195,16 @@ class Handler(BaseHTTPRequestHandler):
                 from urllib.parse import quote
                 uri = f"otpauth://totp/{quote(label)}:admin?secret={secret}&issuer={quote(label)}&algorithm=SHA1&digits=6&period=30"
                 return self.json(200, {"ok": True, "secret": secret, "uri": uri})
+            if path == "/api/admin/recovery-email":
+                email = clean(payload.get("email"), 120)
+                if email and not EMAIL_RE.match(email):
+                    return self.json(400, {"ok": False, "error": "Die E-Mail-Adresse ist ungültig."})
+                if email:
+                    a["email"] = email
+                else:
+                    a.pop("email", None)
+                save_auth(a)
+                return self.json(200, {"ok": True})
             if path == "/api/admin/totp-disable":
                 a.pop("totp", None)
                 a.pop("totp_pending", None)
@@ -2084,13 +2215,23 @@ class Handler(BaseHTTPRequestHandler):
 
 # -------------------------------------------------------------------- Start
 def cli_reset_admin() -> int:
-    tok = create_setup_token()
+    tok = create_setup_token("log", SETUP_TTL, force=True)
     base = site_base_url()
     print(f"\nEinmal-Link zum Setzen des Admin-Passworts (gültig {SETUP_TTL // 60} Minuten):\n")
     print(f"  {base or '<deine-domain>'}/admin/setup#{tok}\n")
     print("Der Link funktioniert genau einmal. Bestehende Sitzungen werden beim Setzen beendet")
     print("und eine eventuell aktive Zwei-Faktor-Anmeldung wird deaktiviert.\n")
     return 0
+
+
+def announce_setup_if_needed():
+    """Ohne Passwort: Einrichtungs-Link ins Log (sichtbar z. B. in Argo CD: App -> Pod -> Logs)."""
+    if password_is_set():
+        return None
+    with AUTH_LOCK:
+        tok = create_setup_token("log", SETUP_TTL_INITIAL, force=True)
+    log_setup_link(tok, SETUP_TTL_INITIAL, "EINRICHTUNG: noch kein Passwort gesetzt")
+    return tok
 
 
 def main(argv=None):
@@ -2106,9 +2247,7 @@ def main(argv=None):
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True
     log.info("%s läuft auf Port %s (Modus: %s, Währung: %s)", SHOP_NAME, PORT, "TESTMODUS" if TESTMODUS else "PRODUKTION", CURRENCY)
-    if not password_is_set():
-        log.warning("Noch kein Admin-Passwort gesetzt. Einrichten mit: "
-                    "kubectl exec -it deploy/<name> -- python /app/server.py reset-admin")
+    announce_setup_if_needed()
 
     def stop(*_):
         log.info("Server wird beendet...")

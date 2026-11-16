@@ -423,11 +423,24 @@
     }));
   });
   function renderAuth(a) {
-    var on = !!(a && a.totp);
+    a = a || {};
+    $('rec-email').value = a.email || '';
+    $('rec-email').placeholder = a.email_env ? a.email_env + ' (aus ADMIN_EMAIL)' : 'admin@example.ch';
+    var hints = [];
+    if (!a.email && !a.email_env) hints.push('Noch keine Wiederherstellungs-E-Mail: Links kommen nur ins Server-Log.');
+    if (!a.smtp_ok) hints.push('SMTP ist noch nicht eingerichtet (unten unter E-Mail & Webseite): ohne SMTP kein Versand.');
+    if (!a.url_ok) hints.push('Die Webseiten-URL fehlt (unten unter E-Mail & Webseite): ohne sie wird kein Link per E-Mail verschickt.');
+    $('rec-hint').textContent = hints.join(' ');
+    $('rec-hint').hidden = !hints.length;
+    var on = !!a.totp;
     $('totp-status').textContent = on ? '✓ Zwei-Faktor-Anmeldung ist aktiv.' : 'Zwei-Faktor-Anmeldung ist nicht aktiv.';
     $('totp-begin').textContent = on ? '2FA neu einrichten (anderes Gerät)' : '2FA einrichten';
     $('totp-disable').hidden = !on;
   }
+  $('save-rec').addEventListener('click', function () {
+    postJSON('/api/admin/recovery-email', { aktuell: $('rec-pw').value, email: $('rec-email').value.trim() })
+      .then(done('Wiederherstellungs-E-Mail gespeichert', function () { $('rec-pw').value = ''; loadState(); }));
+  });
   $('totp-begin').addEventListener('click', function () {
     postJSON('/api/admin/totp-begin', { aktuell: $('totp-pw').value }).then(function (res) {
       if (!res.ok) return toast(res.error || 'Fehler', 'err');

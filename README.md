@@ -32,33 +32,46 @@ site-engine/
 ## 🔐 Admin-Zugang
 
 Es gibt **keinen Benutzernamen** und **kein Passwort im Repo, Image oder in Umgebungsvariablen**.
-Das Passwort liegt nur als Hash (PBKDF2-SHA256, 600 000 Runden) in `/data/site/config/auth.json` (Dateirechte 0600).
+Das Passwort liegt nur als Hash (PBKDF2-SHA256, 600 000 Runden) in `/data/site/config/auth.json` (0600) auf dem
+persistenten Volume – **Neustarts und Updates ändern daran nichts**.
 
-**Erstes Passwort setzen oder Passwort vergessen:**
+**Neue Webseite:** Beim ersten Start schreibt der Server einen **Einrichtungs-Link** (24 h gültig) ins Log:
 
-```bash
-kubectl exec -it deploy/<name> -n <namespace> -- python /app/server.py reset-admin
-# lokal: DATA_DIR=../data python3 app/server.py reset-admin
+```
+WARNING ADMIN-EINRICHTUNG: noch kein Passwort gesetzt – Einmal-Link (gültig 24 h):
+WARNING   https://shop.example.ch/admin/setup#…
 ```
 
-Das gibt einen **Einmal-Link** aus (`https://<domain>/admin/setup#…`, 15 Minuten gültig). Der Code steht hinter dem `#` und wird
-daher nie an Server, Proxy oder Logs übertragen. Nach dem Setzen werden alle Sitzungen beendet und eine aktive 2FA wird
-zurückgesetzt. Wer `kubectl exec` darf, kann das Passwort zurücksetzen – mehr Vertrauen braucht es nicht.
+In Argo CD: *App öffnen → Pod → Logs*, Link anklicken, Passwort setzen – fertig. Ist der Link abgelaufen, erzeugt
+der Button **«Neuen Einrichtungs-Link erzeugen»** auf `/admin/login` einen neuen (wieder im Log).
+Damit der Link die richtige Domain hat, `SHOP_URL` in der ConfigMap setzen (sonst steht `<deine-domain>` im Link).
 
-Weitere Schutzmassnahmen:
+**Passwort vergessen:** Button **«Passwort vergessen?»** auf der Anmeldeseite.
+* Ist unter *Einstellungen → Anmeldung* eine **Wiederherstellungs-E-Mail** hinterlegt (oder `ADMIN_EMAIL` in der ConfigMap)
+  und SMTP sowie die Webseiten-URL eingerichtet, kommt ein Einmal-Link per E-Mail (30 Min. gültig).
+* Zusätzlich steht **immer** ein Link im Server-Log.
+* Ist 2FA aktiv, verlangt der **E-Mail-Link** zusätzlich den 2FA-Code – wer nur das Postfach kontrolliert, kommt nicht rein.
+  Der **Log-Link** (setzt Zugriff auf Argo CD/Cluster voraus) setzt 2FA zurück, falls das Handy weg ist.
+* Notfall ohne UI: `kubectl exec deploy/<name> -n <ns> -- python /app/server.py reset-admin`.
+
+Schutzmassnahmen:
+* Der Code steht hinter dem `#` des Links und gelangt nie an Server, Proxy oder Access-Logs; gespeichert wird nur sein Hash.
+  Jeder Link funktioniert genau einmal; nach dem Setzen sind alle Links und Sitzungen ungültig.
+* Die Domain im E-Mail-Link stammt nur aus der Konfiguration, nie aus dem `Host`-Header (kein Host-Header-Poisoning).
+* Link-Anforderungen sind begrenzt (3 pro 15 Min.); bestehende Links werden nie überschrieben, sodass niemand per
+  Knopfdruck einen gültigen Link entwerten kann.
 * Login-Formular mit Sitzungs-Cookie (`__Host-…`, `HttpOnly`, `Secure`, `SameSite=Strict`), Ablauf nach 2 h Inaktivität bzw. 12 h.
 * CSRF-Token und `Origin`-Prüfung für alle Änderungen.
 * Sperre nach 5 Fehlversuchen pro IP (15 Min.) und globale Obergrenze von 50 Fehlversuchen / 15 Min. gegen IP-Rotation.
-  Neustart des Pods hebt die Sperre auf.
 * Optionale **Zwei-Faktor-Anmeldung (TOTP)** mit jeder Authenticator-App, lokal ohne externen Dienst, mit Replay-Schutz.
 * Admin-Seiten erlauben kein Inline-JavaScript (CSP `script-src 'self'`).
-* Passwortänderung erfordert das aktuelle Passwort und meldet alle anderen Sitzungen ab.
+* Passwortänderung und Änderung der Wiederherstellungs-E-Mail erfordern das aktuelle Passwort.
 
 Lokal ohne HTTPS (z. B. `http://192.168.…`) braucht es `COOKIE_SECURE=0`; für `http://localhost` nicht.
 
 **Upgrade von 1.x:** `ADMIN_USER`, `ADMIN_PASSWORD` und `ADMIN_PASSWORD_HASH` werden ignoriert (Warnung im Log) und können
 aus ConfigMaps/Secrets entfernt werden. Ein früher im Admin gesetztes Passwort (in `settings.json` auf dem Volume) wird
-automatisch übernommen und beim nächsten Login neu gehasht. Sonst einmal `reset-admin` ausführen.
+automatisch übernommen und beim nächsten Login neu gehasht. Sonst einmal den Link aus dem Log verwenden.
 
 ---
 
@@ -124,9 +137,11 @@ behebbaren HIGH/CRITICAL-Schwachstellen ab (Trivy). Veröffentlicht wird nur bei
 ```bash
 git tag v2.0.0 && git push origin --tags
 # -> ghcr.io/drunk-fone/site-engine:2.0.0 und :latest (amd64 + arm64)
+git tag v2.0.0-rc.1 && git push origin v2.0.0-rc.1
+# -> nur :2.0.0-rc.1 (Vorabversion zum Testen, :latest bleibt unverändert)
 ```
 
-Da es keine Shell gibt: `kubectl exec … -- python /app/server.py reset-admin` funktioniert, `kubectl exec … -- sh` nicht.
+Da es keine Shell gibt, funktioniert `kubectl exec … -- sh` nicht; `kubectl exec … -- python /app/server.py reset-admin` schon.
 
 ---
 
@@ -134,7 +149,7 @@ Da es keine Shell gibt: `kubectl exec … -- python /app/server.py reset-admin` 
 
 ```bash
 mkdir -p data
-DATA_DIR=data python3 app/server.py reset-admin   # Einmal-Link ausgeben
-DATA_DIR=data python3 app/server.py               # http://localhost:8080/admin
+DATA_DIR=data SHOP_URL=http://localhost:8080 python3 app/server.py   # Einrichtungs-Link steht im Log
+# -> Link öffnen, Passwort setzen, dann http://localhost:8080/admin
 python3 -m unittest discover tests
 ```

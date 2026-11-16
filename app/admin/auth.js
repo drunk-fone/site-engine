@@ -17,6 +17,21 @@
       $('code-row').hidden = !info.totp;
       $('passwort').focus();
     });
+    function recover(btn, msgEl, okText) {
+      btn.disabled = true;
+      post('/admin/recover', {}).then(function (res) {
+        btn.disabled = false;
+        msgEl.textContent = res.ok ? okText : (res.error || 'Fehler');
+        msgEl.hidden = false;
+      });
+    }
+    $('new-link').addEventListener('click', function () {
+      recover($('new-link'), $('new-link-msg'), 'Neuer Link steht jetzt im Server-Log (24 h gültig). Ist eine E-Mail für die Wiederherstellung hinterlegt, kommt er auch per E-Mail.');
+    });
+    $('forgot').addEventListener('click', function () {
+      recover($('forgot'), $('forgot-msg'), 'Ist eine Wiederherstellungs-E-Mail hinterlegt, ist der Link (30 Min. gültig) unterwegs. ' +
+        'Zusätzlich steht ein Link im Server-Log (Argo CD: App → Pod → Logs).');
+    });
     $('login-form').addEventListener('submit', function (ev) {
       ev.preventDefault();
       showError('');
@@ -43,9 +58,10 @@
       if (pw !== $('pw2').value) return showError('Die Passwörter stimmen nicht überein.');
       if (pw.length < 12) return showError('Das Passwort muss mindestens 12 Zeichen lang sein.');
       $('submit').disabled = true;
-      post('/admin/setup', { token: token || $('token').value.trim(), passwort: pw }).then(function (res) {
+      post('/admin/setup', { token: token || $('token').value.trim(), passwort: pw, code: $('code').value }).then(function (res) {
         $('submit').disabled = false;
         if (res.ok) { location.replace('/admin'); return; }
+        if (res.need_code) { $('code-row').hidden = false; $('code').focus(); }
         showError(res.error || 'Fehler');
       });
     });
