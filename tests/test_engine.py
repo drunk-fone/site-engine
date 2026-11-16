@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+import base64
 import contextlib
+import hashlib
 import http.client
 import io
 import json
@@ -20,7 +22,71 @@ sys.path.insert(0, str(REPO_ROOT / "app"))
 
 import server  # noqa: E402
 
-PASSWORD = "korrekt-pferd-batterie"
+CLIENT_ID = "123456789012-abcdefghijklmnopqrstuvwxyz012345.apps.googleusercontent.com"
+ADMIN = "admin@beispiel.ch"
+
+# Fester 2048-Bit-RSA-Testschlüssel (nur für Tests) – damit werden echte RS256-Tokens signiert.
+TEST_N = int("c42603300b22d47ad06f1a116ed3a210d56f240b1f4eb877fc7634eaa5c80498b4c83626c775385c55ac311d5f7b45c9956e2510d964ce6660d52f6a1b8fe8cd517c071c74530d42a91a8aab1ac8a3e25a6901f5763769c077096b21137c500b67193a5a5ee1ae2d369ee81f869567502cc62c13f8699a59af6ed4348ab141a683159bae00d6e59e891037064da5cc57592f0197d6cbb3f0db0c89bf7fc839dc8a9c537e5ccdccd9a37f61d815de6b4b1cf7108ef82d94f354aae7f7832c01b7f550c9b64c0c5431afe4dab3441d3bd20da4b945b564832bfa41fd39c3b40b7f5915b873b8bb2a3b272df88291ed4b0ac52017e3c12ffbace647d9772b10a131", 16)
+TEST_D = int("663708e2386b661eba0fab9dfa0aff219697dc488f800e513896c0eca6879d1d96d7dea046c0a72636df0c9929f0ab65692184df4aea6544a4a1739befd10698382651ee5a100d90f75e8574b4f869aec33e856eccb403bff0485033645c1bba5577a818ffe8cb43747b4aab630ee84fb7856de2da48edce5ec57a8006e66836da4844e95c84ac9056edf344d516fd90d8a044448aeb1560f2fcd0e706db2975b1e29814b66098bacfec5716159d6bf3a3a3573dca8e657596155627f92fdeece3dbeb4ab75cf1cb376131f6ff7877fa5ff2e06573104c9c9ecb75aa30b3b5cf07ae68a4149043072ee4edd9424602b62ebb8dd9ad229f07ac8e740b26b60f3", 16)
+TEST_KID = "test-kid-1"
+
+
+def b64u(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def sign_rs256(msg: bytes, n=None, d=None) -> bytes:
+    n, d = n or TEST_N, d or TEST_D
+    k = (n.bit_length() + 7) // 8
+    t = server.SHA256_DIGEST_INFO + hashlib.sha256(msg).digest()
+    em = b"\x00\x01" + b"\xff" * (k - len(t) - 3) + b"\x00" + t
+    return pow(int.from_bytes(em, "big"), d, n).to_bytes(k, "big")
+
+
+def google_token(nonce, email=ADMIN, aud=CLIENT_ID, iss="https://accounts.google.com", exp_in=3600,
+                 verified=True, kid=TEST_KID, alg="RS256", **extra):
+    now = int(time.time())
+    header = {"alg": alg, "kid": kid, "typ": "JWT"}
+    claims = dict({"iss": iss, "aud": aud, "sub": "1234", "email": email, "email_verified": verified,
+                   "iat": now, "exp": now + exp_in, "nonce": nonce}, **extra)
+    h = b64u(json.dumps(header).encode()); p = b64u(json.dumps(claims).encode())
+    return f"{h}.{p}.{b64u(sign_rs256(f'{h}.{p}'.encode()))}"
+
+
+class FakeGoogle:
+    """Liefert den Testschlüssel als JWKS aus (wie https://www.googleapis.com/oauth2/v3/certs)."""
+    requests = 0
+
+    def __init__(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        fake = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                fake.requests += 1
+                body = json.dumps({"keys": [{"kty": "RSA", "alg": "RS256", "use": "sig", "kid": TEST_KID,
+                                             "n": b64u(TEST_N.to_bytes(256, "big")), "e": "AQAB"}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Cache-Control", "public, max-age=3600")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}/certs"
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+FAKE_GOOGLE = FakeGoogle()
+server.GOOGLE_CERTS_URL = FAKE_GOOGLE.url
 
 
 def png(w=4, h=3):
@@ -38,7 +104,8 @@ def reset_globals(tmp):
     server.SESSIONS.clear()
     server.FAILS.clear()
     server.GLOBAL_FAILS.clear()
-    server.RECOVERY_TIMES.clear()
+    server.USED_NONCES.clear()
+    server.JWKS.update({"keys": {}, "expires": 0.0, "fetched": 0.0})
 
 
 class TestSiteEngineSecurity(unittest.TestCase):
@@ -185,40 +252,78 @@ class TestAuthPrimitives(unittest.TestCase):
     def tearDown(self):
         self.tmp_dir.cleanup()
 
-    def test_password_hash_roundtrip(self):
-        h = server.hash_password(PASSWORD)
-        self.assertTrue(h.startswith("pbkdf2_sha256$600000$"))
-        self.assertNotIn(PASSWORD, h)
-        self.assertEqual(server.verify_password(PASSWORD, h), (True, False))
-        self.assertEqual(server.verify_password("falsch", h), (False, False))
-        self.assertEqual(server.verify_password(PASSWORD, "kaputt"), (False, False))
-        self.assertEqual(server.verify_password(PASSWORD, ""), (False, False))
-        self.assertNotEqual(server.hash_password(PASSWORD), h, "Salt muss zufällig sein")
+    def test_rsa_signature(self):
+        msg = b"hallo"
+        sig = sign_rs256(msg)
+        self.assertTrue(server.rsa_sha256_verify(TEST_N, 65537, msg, sig))
+        self.assertFalse(server.rsa_sha256_verify(TEST_N, 65537, b"hallo!", sig))
+        bad = bytearray(sig); bad[-1] ^= 1
+        self.assertFalse(server.rsa_sha256_verify(TEST_N, 65537, msg, bytes(bad)))
+        self.assertFalse(server.rsa_sha256_verify(TEST_N, 3, msg, sig), "nur e=65537")
+        self.assertFalse(server.rsa_sha256_verify(TEST_N, 65537, msg, sig[1:]), "falsche Länge")
+        self.assertFalse(server.rsa_sha256_verify(TEST_N, 65537, msg, TEST_N.to_bytes(256, "big")), "s >= n")
+        small = 0xC2E9  # zu kurzer Schlüssel
+        self.assertFalse(server.rsa_sha256_verify(small, 65537, msg, b"\x01" * 2))
 
-    def test_new_password_rules(self):
-        with self.assertRaises(server.Fehler):
-            server.check_new_password("kurz")
-        with self.assertRaises(server.Fehler):
-            server.check_new_password(None)
-        self.assertEqual(server.check_new_password(PASSWORD), PASSWORD)
+    def check(self, token, nonce="n1", cid=CLIENT_ID):
+        return server.verify_google_token(token, cid, nonce)
 
-    def test_totp_rfc6238_vector(self):
-        import base64
-        secret = base64.b32encode(b"12345678901234567890").decode()
-        # RFC 6238 Anhang B, T=59 -> 94287082 (8 Stellen) -> 287082 (6 Stellen)
-        self.assertEqual(server.totp_at(secret, 1, digits=8), "94287082")
-        self.assertEqual(server.totp_at(secret, 1), "287082")
-        self.assertEqual(server.totp_check(secret, "287 082", now=59), 1)
-        self.assertIsNone(server.totp_check(secret, "287082", last_counter=1, now=59), "Replay muss scheitern")
-        self.assertIsNone(server.totp_check(secret, "000000", now=59))
-        self.assertIsNone(server.totp_check(secret, "abc", now=59))
+    def test_google_token_validation(self):
+        claims = self.check(google_token("n1", email="Admin@Beispiel.CH"))
+        self.assertEqual(claims["email"], "admin@beispiel.ch")
+        self.check(google_token("n1", iss="accounts.google.com"))
+        cases = {
+            "fremde Client ID": google_token("n1", aud="999-x.apps.googleusercontent.com"),
+            "abgelaufen": google_token("n1", exp_in=-120),
+            "falscher Aussteller": google_token("n1", iss="https://evil.example"),
+            "falsche Nonce": google_token("anders"),
+            "unbestätigte E-Mail": google_token("n1", verified=False),
+            "alg none": google_token("n1", alg="none"),
+            "unbekannter Schlüssel": google_token("n1", kid="gibts-nicht"),
+            "kaputt": "a.b.c",
+            "kein JWT": "hallo",
+        }
+        for name, tok in cases.items():
+            with self.assertRaises(server.AuthFehler, msg=name):
+                self.check(tok)
+        # Signatur manipuliert: andere E-Mail in den Claims, alte Signatur
+        h, p, sg = google_token("n1").split(".")
+        p2 = b64u(json.dumps(dict(json.loads(base64.urlsafe_b64decode(p + "==")), email="evil@x.ch")).encode())
+        with self.assertRaises(server.AuthFehler):
+            self.check(f"{h}.{p2}.{sg}")
+        with self.assertRaises(server.AuthFehler):
+            self.check(google_token("n1"), cid="")
+        with self.assertRaises(server.AuthFehler):
+            self.check(google_token(""), nonce="")
+
+    def test_google_keys_cached(self):
+        FAKE_GOOGLE.requests = 0
+        for _ in range(3):
+            self.check(google_token("n1"))
+        self.assertEqual(FAKE_GOOGLE.requests, 1, "Schlüssel werden gecacht")
+        for _ in range(3):
+            with self.assertRaises(server.AuthFehler):
+                self.check(google_token("n1", kid="neu"))
+        self.assertEqual(FAKE_GOOGLE.requests, 1, "unbekannte kid: höchstens alle 30 s neu laden")
+
+    def test_notfall_codes(self):
+        codes = server.new_notfall_codes()
+        self.assertEqual(len(codes), 10)
+        self.assertEqual(len(set(codes)), 10)
+        self.assertRegex(codes[0], r"^[A-Z2-7]{4}(-[A-Z2-7]{4}){3}$")
+        server.save_auth({"notfall_codes": [server.sha256_hex(server.norm_notfall_code(c)) for c in codes]})
+        self.assertNotIn(codes[0], server.auth_file().read_text())
+        self.assertEqual(server.use_notfall_code(codes[0].lower().replace("-", " ")), 9)
+        self.assertIsNone(server.use_notfall_code(codes[0]), "nur einmal gültig")
+        self.assertIsNone(server.use_notfall_code("AAAA-AAAA-AAAA-AAAA"))
+        self.assertIsNone(server.use_notfall_code(""))
 
     def test_setup_token_single_use_and_expiry(self):
         tok = server.create_setup_token()
         self.assertNotIn(tok, server.setup_token_file().read_text())
         self.assertFalse(server.consume_setup_token("falsch"))
         self.assertTrue(server.consume_setup_token(tok))
-        self.assertFalse(server.consume_setup_token(tok), "Token darf nur einmal funktionieren")
+        self.assertFalse(server.consume_setup_token(tok))
         tok = server.create_setup_token()
         d = json.loads(server.setup_token_file().read_text())
         d["tokens"][0]["expires"] = time.time() - 1
@@ -226,45 +331,63 @@ class TestAuthPrimitives(unittest.TestCase):
         self.assertFalse(server.consume_setup_token(tok))
 
     def test_tokens_cannot_be_evicted(self):
-        first = server.create_setup_token("log")
+        first = server.create_setup_token()
         for _ in range(server.MAX_SETUP_TOKENS - 1):
-            self.assertIsNotNone(server.create_setup_token("log"))
-        self.assertIsNone(server.create_setup_token("log"), "voll: kein neuer Link ohne force")
-        self.assertEqual(server.check_setup_token(first), "log", "bestehender Link bleibt gültig")
-        self.assertIsNotNone(server.create_setup_token("log", force=True))
+            self.assertIsNotNone(server.create_setup_token())
+        self.assertIsNone(server.create_setup_token())
+        self.assertTrue(server.check_setup_token(first))
+        self.assertIsNotNone(server.create_setup_token(force=True))
         self.assertEqual(len(server._load_setup_tokens()), server.MAX_SETUP_TOKENS)
 
-    def test_startup_announces_setup_link(self):
-        with self.assertLogs("site-engine", "WARNING") as cm:
-            tok = server.announce_setup_if_needed()
-        self.assertTrue(any(f"/admin/setup#{tok}" in line for line in cm.output))
-        self.assertEqual(server.check_setup_token(tok), "log")
-        exp = server._load_setup_tokens()[0]["expires"]
-        self.assertGreater(exp - time.time(), 23 * 3600, "Erst-Link ist 24 h gültig")
-        server.save_auth({"pw": server.hash_password(PASSWORD)})
-        self.assertIsNone(server.announce_setup_if_needed(), "mit Passwort: kein Link")
+    def test_startup_announce_only_when_nobody_can_log_in(self):
+        with env(GOOGLE_CLIENT_ID=None, ADMIN_EMAILS=None):
+            with self.assertLogs("site-engine", "WARNING") as cm:
+                tok = server.announce_setup_if_needed()
+            self.assertTrue(any(f"/admin/setup#{tok}" in line for line in cm.output))
+        with env(GOOGLE_CLIENT_ID=CLIENT_ID, ADMIN_EMAILS=ADMIN):
+            self.assertIsNone(server.announce_setup_if_needed(), "mit ConfigMap: kein Link nötig")
 
-    def test_legacy_migration(self):
-        import hashlib
-        salt = "c7ecf8c6d1ac14280a6b91bfad9cf6f6"
-        digest = hashlib.pbkdf2_hmac("sha256", b"altes-passwort", salt.encode(), 100_000).hex()
-        server.save_runtime_settings({"admin_user": "admin", "admin_password_hash": f"{salt}${digest}", "mail_to": "a@b.ch"})
+    def test_admin_emails_and_client_id(self):
+        with env(ADMIN_EMAILS=" Admin@Beispiel.ch, kunde@gmail.com;kaputt ", GOOGLE_CLIENT_ID=None):
+            server.save_auth({"emails": ["Zweiter@x.ch"], "google_client_id": CLIENT_ID})
+            self.assertEqual(server.admin_emails(), ["admin@beispiel.ch", "kunde@gmail.com", "zweiter@x.ch"])
+            self.assertEqual(server.google_client_id(), CLIENT_ID)
+        with env(GOOGLE_CLIENT_ID="999-envwins.apps.googleusercontent.com"):
+            self.assertEqual(server.google_client_id(), "999-envwins.apps.googleusercontent.com")
+
+    def test_legacy_cleanup(self):
+        server.save_runtime_settings({"admin_user": "admin", "admin_password_hash": "a$b", "mail_to": "a@b.ch"})
+        server.save_auth({"pw": "pbkdf2_sha256$1$aa$bb", "totp": {"enabled": True}, "email": "x@y.z", "emails": [ADMIN]})
         server.migrate_legacy_auth()
-        s = server.load_runtime_settings()
-        self.assertNotIn("admin_user", s)
-        self.assertNotIn("admin_password_hash", s)
-        self.assertEqual(s["mail_to"], "a@b.ch")
-        ok, rehash = server.verify_password("altes-passwort", server.load_auth()["pw"])
-        self.assertTrue(ok)
-        self.assertTrue(rehash)
+        self.assertEqual(server.load_runtime_settings(), {"mail_to": "a@b.ch"})
+        self.assertEqual(server.load_auth(), {"emails": [ADMIN]})
 
-    def test_cli_reset_admin(self):
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            self.assertEqual(server.main(["reset-admin"]), 0)
-        link = [line for line in out.getvalue().splitlines() if "/admin/setup#" in line][0]
-        self.assertTrue(server.consume_setup_token(link.split("#", 1)[1].strip()))
+    def test_cli_notfall_link(self):
+        for cmd in ("notfall-link", "reset-admin"):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(server.main([cmd]), 0)
+            link = [line for line in out.getvalue().splitlines() if "/admin/setup#" in line][0]
+            self.assertTrue(server.consume_setup_token(link.split("#", 1)[1].strip()))
         self.assertEqual(server.main(["unbekannt"]), 2)
+
+
+@contextlib.contextmanager
+def env(**kw):
+    old = {k: os.environ.get(k) for k in kw}
+    for k, v in kw.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+    try:
+        yield
+    finally:
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 class TestImageHelpers(unittest.TestCase):
@@ -321,11 +444,13 @@ class TestImageHelpers(unittest.TestCase):
 
 
 class HTTPBase(unittest.TestCase):
-    """Echter Server auf einem freien Port, Login über Einrichtungs-Link."""
+    """Echter Server auf einem freien Port; Anmeldung über (simuliertes) Google."""
 
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()
         reset_globals(self.tmp_dir.name)
+        self._env = env(GOOGLE_CLIENT_ID=CLIENT_ID, ADMIN_EMAILS=ADMIN)
+        self._env.__enter__()
         self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         self.port = self.httpd.server_address[1]
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
@@ -335,6 +460,7 @@ class HTTPBase(unittest.TestCase):
     def tearDown(self):
         self.httpd.shutdown()
         self.httpd.server_close()
+        self._env.__exit__(None, None, None)
         self.tmp_dir.cleanup()
         server.reload_catalog()
 
@@ -356,11 +482,22 @@ class HTTPBase(unittest.TestCase):
         c.close()
         return out
 
-    def setup_admin(self):
-        tok = server.create_setup_token()
-        st, body = self.req("POST", "/admin/setup", {"token": tok, "passwort": PASSWORD}, auth=False)
+    def nonce(self):
+        st, body = self.req("GET", "/admin/login-info", auth=False)
+        cookie = [v for k, v in self.last_headers.items() if k.lower() == "set-cookie"][0].split(";")[0]
+        return json.loads(body)["nonce"], cookie
+
+    def google_login(self, email=ADMIN, **kw):
+        nonce, ncookie = self.nonce()
+        tok = google_token(nonce, email=email, **kw)
+        st, body = self.req("POST", "/admin/google", {"credential": tok}, auth=False, headers={"Cookie": ncookie})
+        return st, body, tok, ncookie
+
+    def setup_admin(self, email=ADMIN):
+        st, body, _, _ = self.google_login(email)
         self.assertEqual(st, 200, body)
-        self.cookie = self.last_headers["Set-Cookie"].split(";")[0]
+        cookies = [v for k, v in self.last_headers.items() if k.lower() == "set-cookie"]
+        self.cookie = [c for c in cookies if "session" in c][0].split(";")[0]
         self.load_csrf()
 
     def load_csrf(self):
@@ -371,47 +508,84 @@ class HTTPBase(unittest.TestCase):
 
 
 class TestAuthHTTP(HTTPBase):
-    def test_fresh_instance_requires_setup(self):
+    def test_login_page_and_unauthenticated(self):
         st, body = self.req("GET", "/admin/login-info", auth=False)
-        self.assertEqual(json.loads(body), {"setup": True, "totp": False})
-        st, body = self.req("POST", "/admin/login", {"passwort": "irgendwas"}, auth=False)
-        self.assertEqual(st, 409)
+        info = json.loads(body)
+        self.assertEqual((info["client_id"], info["erlaubt"], info["notfall"]), (CLIENT_ID, True, False))
+        self.assertIn("HttpOnly", self.last_headers["Set-Cookie"])
         self.assertEqual(self.req("GET", "/admin", auth=False)[0], 303)
         self.assertEqual(self.last_headers["Location"], "/admin/login")
         self.assertEqual(self.req("GET", "/api/admin/state", auth=False)[0], 401)
         self.assertEqual(self.req("GET", "/admin/admin.js", auth=False)[0], 401)
-        # Login-Seite ist öffentlich und erlaubt kein Inline-JS
         self.assertEqual(self.req("GET", "/admin/login", auth=False)[0], 200)
         csp = self.last_headers["Content-Security-Policy"]
-        self.assertIn("script-src 'self';", csp)
-        self.assertNotIn("unsafe-inline' https", csp.split("script-src")[1].split(";")[0])
-        # Altes Basic-Auth geht nicht mehr
+        self.assertIn("script-src 'self' https://accounts.google.com/gsi/client;", csp)
+        self.assertNotIn("unsafe-inline", csp.split("script-src")[1].split(";")[0])
+        self.assertEqual(self.last_headers["Cross-Origin-Opener-Policy"], "same-origin-allow-popups")
+        # Andere Admin-Seiten bleiben streng
+        self.req("GET", "/admin/setup", auth=False)
+        self.assertNotIn("google", self.last_headers["Content-Security-Policy"])
+        self.assertEqual(self.last_headers["Cross-Origin-Opener-Policy"], "same-origin")
+        # Passwort- und Basic-Auth-Wege gibt es nicht mehr
+        self.assertEqual(self.req("POST", "/admin/login", {"passwort": "x"}, auth=False)[0], 404)
         self.assertEqual(self.req("GET", "/api/admin/state", auth=False,
                                   headers={"Authorization": "Basic YWRtaW46cHc="})[0], 401)
 
-    def test_setup_login_logout(self):
-        self.assertEqual(self.req("POST", "/admin/setup", {"token": "falsch", "passwort": PASSWORD}, auth=False)[0], 403)
-        tok = server.create_setup_token()
-        self.assertEqual(self.req("POST", "/admin/setup", {"token": tok, "passwort": "kurz"}, auth=False)[0], 400)
+    def test_google_login_and_logout(self):
         self.setup_admin()
-        cookie_hdr = self.last_headers.get("Set-Cookie")
-        self.assertIsNone(cookie_hdr)  # nur beim Setup gesetzt; jetzt GET /admin
+        sc = [v for k, v in self.last_headers.items()]  # nach load_csrf
         st, body = self.req("GET", "/api/admin/state")
         self.assertEqual(st, 200)
-        self.assertNotIn(b"pbkdf2", body)
-        self.assertNotIn(b"smtp_pass\"", body)
-        # Logout beendet die Sitzung
+        self.assertEqual(json.loads(body)["auth"]["ich"], ADMIN)
         self.assertEqual(self.req("POST", "/admin/logout", {})[0], 200)
         self.assertEqual(self.req("GET", "/api/admin/state")[0], 401)
-        # Neu anmelden mit Passwort
-        st, _ = self.req("POST", "/admin/login", {"passwort": PASSWORD}, auth=False)
-        self.assertEqual(st, 200)
-        sc = self.last_headers["Set-Cookie"]
+        st, _, _, _ = self.google_login()
+        cookies = [v for k, v in self.last_headers.items() if k.lower() == "set-cookie"]
+        session = [c for c in cookies if "session" in c][0]
         for flag in ("HttpOnly", "SameSite=Strict", "Secure", "Path=/"):
-            self.assertIn(flag, sc)
-        self.assertTrue(sc.startswith("__Host-se_session="))
-        self.cookie = sc.split(";")[0]
-        self.assertEqual(self.req("GET", "/api/admin/state")[0], 200)
+            self.assertIn(flag, session)
+        self.assertTrue(session.startswith("__Host-se_session="))
+        self.assertTrue(any(c.startswith("__Host-se_nonce=;") and "Max-Age=0" in c for c in cookies), "Nonce wird gelöscht")
+
+    def test_google_login_rejections(self):
+        st, body, _, _ = self.google_login(email="fremder@gmail.com")
+        self.assertEqual(st, 403)
+        self.assertIn("keinen Zugang", json.loads(body)["error"])
+        self.assertEqual(self.google_login(aud="999-x.apps.googleusercontent.com")[0], 401)
+        self.assertEqual(self.google_login(verified=False)[0], 401)
+        # Token ohne passendes Nonce-Cookie (z. B. abgefangen und in anderem Browser benutzt)
+        nonce, _ = self.nonce()
+        tok = google_token(nonce)
+        self.assertEqual(self.req("POST", "/admin/google", {"credential": tok}, auth=False)[0], 401)
+        self.assertEqual(self.req("POST", "/admin/google", {"credential": tok}, auth=False,
+                                  headers={"Cookie": "__Host-se_nonce=anders"})[0], 401)
+        # Login von fremder Seite
+        server.FAILS.clear(); server.GLOBAL_FAILS.clear()
+        nonce, ncookie = self.nonce()
+        self.assertEqual(self.req("POST", "/admin/google", {"credential": google_token(nonce)}, auth=False,
+                                  headers={"Cookie": ncookie, "Origin": "https://evil.example"})[0], 403)
+
+    def test_token_replay(self):
+        st, _, tok, ncookie = self.google_login()
+        self.assertEqual(st, 200)
+        st, body = self.req("POST", "/admin/google", {"credential": tok}, auth=False, headers={"Cookie": ncookie})
+        self.assertEqual(st, 401)
+        self.assertIn("schon benutzt", json.loads(body)["error"])
+
+    def test_lockout(self):
+        orig = server.time.sleep
+        server.time.sleep = lambda s: None
+        try:
+            for _ in range(server.LOGIN_MAX_FAILS):
+                self.assertEqual(self.google_login(email="fremder@gmail.com")[0], 403)
+            self.assertEqual(self.google_login()[0], 429, "auch das richtige Konto ist jetzt gesperrt")
+            for i in range(server.LOGIN_GLOBAL_MAX):
+                self.req("POST", "/admin/notfall", {"code": "AAAA-AAAA-AAAA-AAAA"}, auth=False,
+                         headers={"X-Real-IP": f"198.51.100.{i}"})
+            self.assertEqual(self.req("POST", "/admin/notfall", {"code": "x"}, auth=False,
+                                      headers={"X-Real-IP": "192.0.2.77"})[0], 429, "globale Obergrenze")
+        finally:
+            server.time.sleep = orig
 
     def test_csrf_and_origin(self):
         self.setup_admin()
@@ -421,148 +595,52 @@ class TestAuthHTTP(HTTPBase):
         self.assertEqual(self.req("POST", "/api/admin/page", page, headers={"Origin": "https://evil.example"})[0], 403)
         self.assertEqual(self.req("POST", "/api/admin/page", page,
                                   headers={"Origin": f"http://127.0.0.1:{self.port}"})[0], 200)
-        # Login von fremder Seite
-        self.assertEqual(self.req("POST", "/admin/login", {"passwort": PASSWORD}, auth=False,
-                                  headers={"Origin": "https://evil.example"})[0], 403)
 
-    def test_lockout(self):
+    def test_access_management(self):
         self.setup_admin()
-        orig = server.time.sleep
-        server.time.sleep = lambda s: None
-        try:
-            for _ in range(server.LOGIN_MAX_FAILS):
-                self.assertEqual(self.req("POST", "/admin/login", {"passwort": "falsch"}, auth=False)[0], 401)
-            # Auch das richtige Passwort wird jetzt abgewiesen
-            self.assertEqual(self.req("POST", "/admin/login", {"passwort": PASSWORD}, auth=False)[0], 429)
-            # Andere IP (hinter Proxy) ist nicht betroffen ...
-            self.assertEqual(self.req("POST", "/admin/login", {"passwort": PASSWORD}, auth=False,
-                                      headers={"X-Real-IP": "203.0.113.9"})[0], 200)
-            # ... aber eine globale Obergrenze stoppt IP-Rotation
-            for i in range(server.LOGIN_GLOBAL_MAX):
-                self.req("POST", "/admin/login", {"passwort": "falsch"}, auth=False, headers={"X-Real-IP": f"198.51.100.{i}"})
-            self.assertEqual(self.req("POST", "/admin/login", {"passwort": PASSWORD}, auth=False,
-                                      headers={"X-Real-IP": "192.0.2.77"})[0], 429)
-        finally:
-            server.time.sleep = orig
+        self.assertEqual(self.req("POST", "/api/admin/access", {"emails": ["kaputt"]})[0], 400)
+        self.assertEqual(self.req("POST", "/api/admin/access", {"emails": ["Kunde@Gmail.com", "kunde@gmail.com"]})[0], 200)
+        self.assertEqual(server.load_auth()["emails"], ["kunde@gmail.com"])
+        # Kunde kann sich jetzt anmelden
+        self.assertEqual(self.google_login(email="kunde@gmail.com")[0], 200)
+        # Client ID aus der ConfigMap kann im Admin nicht überschrieben werden
+        self.req("POST", "/api/admin/access", {"emails": [], "client_id": "999-x.apps.googleusercontent.com"})
+        self.assertEqual(server.google_client_id(), CLIENT_ID)
 
-    def test_password_change_drops_other_sessions(self):
+    def test_access_without_env(self):
+        """Client ID und Konten nur über das Admin-UI (ohne ConfigMap), inkl. Selbstaussperr-Schutz."""
+        with env(GOOGLE_CLIENT_ID=None, ADMIN_EMAILS=None):
+            tok = server.create_setup_token()
+            self.assertEqual(self.req("POST", "/admin/setup", {"token": tok}, auth=False)[0], 200)
+            self.cookie = self.last_headers["Set-Cookie"].split(";")[0]
+            self.load_csrf()
+            self.assertEqual(self.req("POST", "/api/admin/access", {"emails": [ADMIN], "client_id": "kein-client"})[0], 400)
+            self.assertEqual(self.req("POST", "/api/admin/access", {"emails": [], "client_id": CLIENT_ID})[0], 400,
+                             "ohne Konto und ohne Notfall-Codes käme niemand mehr rein")
+            self.assertEqual(self.req("POST", "/api/admin/access", {"emails": [ADMIN], "client_id": CLIENT_ID})[0], 200)
+            self.cookie = None
+            self.setup_admin()
+            self.assertEqual(self.req("POST", "/api/admin/access", {"emails": ["anderer@x.ch"]})[0], 400, "Selbstaussperrung")
+
+    def test_notfall_codes_flow(self):
         self.setup_admin()
-        st, _ = self.req("POST", "/admin/login", {"passwort": PASSWORD}, auth=False)
-        other = self.last_headers["Set-Cookie"].split(";")[0]
-        self.assertEqual(self.req("POST", "/api/admin/password", {"aktuell": "falsch", "neu": "x" * 12})[0], 403)
-        self.assertEqual(self.req("POST", "/api/admin/password", {"aktuell": PASSWORD, "neu": "kurz"})[0], 400)
-        self.assertEqual(self.req("POST", "/api/admin/password", {"aktuell": PASSWORD, "neu": "ein-neues-langes-pw"})[0], 200)
-        self.assertEqual(self.req("GET", "/api/admin/state")[0], 200, "eigene Sitzung bleibt")
-        self.assertEqual(self.req("GET", "/api/admin/state", headers={"Cookie": other}, auth=False)[0], 401)
+        st, body = self.req("POST", "/api/admin/notfall-codes", {})
+        codes = json.loads(body)["codes"]
+        self.assertEqual(json.loads(self.req("GET", "/api/admin/state")[1])["auth"]["notfall_codes"], 10)
+        self.assertNotIn(codes[0].encode(), self.req("GET", "/api/admin/state")[1], "Codes nur einmal sichtbar")
+        self.req("POST", "/admin/logout", {})
+        st, body = self.req("POST", "/admin/notfall", {"code": codes[3]}, auth=False)
+        self.assertEqual((st, json.loads(body)["uebrig"]), (200, 9))
+        self.assertEqual(self.req("POST", "/admin/notfall", {"code": codes[3]}, auth=False)[0], 401)
+        self.assertTrue(json.loads(self.req("GET", "/admin/login-info", auth=False)[1])["notfall"])
 
-    def test_totp_flow(self):
-        self.setup_admin()
-        self.assertEqual(self.req("POST", "/api/admin/totp-begin", {"aktuell": "falsch"})[0], 403)
-        st, body = self.req("POST", "/api/admin/totp-begin", {"aktuell": PASSWORD})
-        secret = json.loads(body)["secret"]
-        self.assertTrue(json.loads(body)["uri"].startswith("otpauth://totp/"))
-        self.assertEqual(self.req("POST", "/api/admin/totp-enable", {"code": "000000"})[0], 400)
-        code = server.totp_at(secret, int(time.time() // 30))
-        self.assertEqual(self.req("POST", "/api/admin/totp-enable", {"code": code})[0], 200)
-        self.assertEqual(json.loads(self.req("GET", "/admin/login-info", auth=False)[1])["totp"], True)
-        # Login ohne/mit falschem Code scheitert, Code-Replay ebenfalls
-        self.assertEqual(self.req("POST", "/admin/login", {"passwort": PASSWORD}, auth=False)[0], 401)
-        self.assertEqual(self.req("POST", "/admin/login", {"passwort": PASSWORD, "code": code}, auth=False)[0], 401)
-        server.FAILS.clear()
-        server.GLOBAL_FAILS.clear()
-        next_code = server.totp_at(secret, int(time.time() // 30) + 1)
-        self.assertEqual(self.req("POST", "/admin/login", {"passwort": PASSWORD, "code": next_code}, auth=False)[0], 200)
-        # Reset über Einrichtungs-Link schaltet 2FA ab
-        self.setup_admin()
-        self.assertEqual(json.loads(self.req("GET", "/admin/login-info", auth=False)[1])["totp"], False)
-
-
-class TestRecoveryHTTP(HTTPBase):
-    def setUp(self):
-        super().setUp()
-        self.sent = []
-        self._orig_send = server.send_mail
-        server.send_mail = lambda to, subj, body, reply_to=None, force_live=False: self.sent.append((to, subj, body, force_live))
-
-    def tearDown(self):
-        server.send_mail = self._orig_send
-        super().tearDown()
-
-    def wait_mail(self, n=1):
-        for _ in range(50):
-            if len(self.sent) >= n:
-                return
-            time.sleep(0.05)
-        self.fail("keine E-Mail verschickt")
-
-    def log_token(self, output):
-        return [l for l in output if "/admin/setup#" in l][0].split("#", 1)[1].strip()
-
-    def test_new_site_link_via_button_and_log(self):
-        with self.assertLogs("site-engine", "WARNING") as cm:
-            st, _ = self.req("POST", "/admin/recover", {}, auth=False)
-        self.assertEqual(st, 200)
-        tok = self.log_token(cm.output)
-        self.assertEqual(self.req("POST", "/admin/setup", {"token": tok, "passwort": PASSWORD}, auth=False)[0], 200)
-        self.assertEqual(self.sent, [], "ohne E-Mail/SMTP nur Log")
-        server.RECOVERY_TIMES.clear()
-        for _ in range(server.RECOVERY_MAX):
-            self.assertEqual(self.req("POST", "/admin/recover", {}, auth=False)[0], 200)
-        self.assertEqual(self.req("POST", "/admin/recover", {}, auth=False)[0], 429)
-        self.assertEqual(self.req("POST", "/admin/recover", {}, auth=False,
-                                  headers={"Origin": "https://evil.example"})[0], 403)
-
-    def configure_mail(self):
-        self.setup_admin()
-        self.req("POST", "/api/admin/settings", {"shop_url": "https://www.beispiel.ch", "smtp_user": "a@b.ch", "smtp_pass": "x"})
-        self.assertEqual(self.req("POST", "/api/admin/recovery-email", {"aktuell": "falsch", "email": "ich@beispiel.ch"})[0], 403)
-        self.assertEqual(self.req("POST", "/api/admin/recovery-email", {"aktuell": PASSWORD, "email": "kaputt"})[0], 400)
-        self.assertEqual(self.req("POST", "/api/admin/recovery-email", {"aktuell": PASSWORD, "email": "ich@beispiel.ch"})[0], 200)
-        auth = json.loads(self.req("GET", "/api/admin/state")[1])["auth"]
-        self.assertEqual((auth["email"], auth["smtp_ok"], auth["url_ok"]), ("ich@beispiel.ch", True, True))
-
-    def mail_token(self):
-        self.wait_mail()
-        to, subj, body, live = self.sent[-1]
-        self.assertEqual(to, "ich@beispiel.ch")
-        self.assertTrue(live, "Wiederherstellung auch im Testmodus")
-        link = [l for l in body.splitlines() if "/admin/setup#" in l][0]
-        self.assertTrue(link.startswith("https://www.beispiel.ch/admin/setup#"), "Domain nur aus Konfiguration")
-        return link.split("#", 1)[1]
-
-    def test_forgot_password_by_email(self):
-        self.configure_mail()
-        # Host-Header-Poisoning: der Link darf nie auf die Domain des Angreifers zeigen
-        self.assertEqual(self.req("POST", "/admin/recover", {}, auth=False, headers={"Host": "evil.example"})[0], 200)
-        tok = self.mail_token()
-        self.assertEqual(server.check_setup_token(tok), "email")
-        self.assertEqual(self.req("POST", "/admin/setup", {"token": tok, "passwort": "ganz-neues-passwort"}, auth=False)[0], 200)
-        self.assertEqual(self.req("POST", "/admin/login", {"passwort": "ganz-neues-passwort"}, auth=False)[0], 200)
-        self.assertEqual(server.load_auth().get("email"), "ich@beispiel.ch", "E-Mail bleibt erhalten")
-        self.assertIsNone(server.check_setup_token(tok), "Links sind danach verbraucht")
-
-    def test_email_link_needs_2fa_log_link_resets_it(self):
-        self.configure_mail()
-        secret = json.loads(self.req("POST", "/api/admin/totp-begin", {"aktuell": PASSWORD})[1])["secret"]
-        self.req("POST", "/api/admin/totp-enable", {"code": server.totp_at(secret, int(time.time() // 30))})
-        with self.assertLogs("site-engine", "WARNING") as cm:
-            self.req("POST", "/admin/recover", {}, auth=False)
-        tok, log_tok = self.mail_token(), self.log_token(cm.output)
-        st, body = self.req("POST", "/admin/setup", {"token": tok, "passwort": "ganz-neues-passwort"}, auth=False)
-        self.assertEqual(st, 401)
-        self.assertTrue(json.loads(body)["need_code"])
-        code = server.totp_at(secret, int(time.time() // 30) + 1)
-        st, _ = self.req("POST", "/admin/setup", {"token": tok, "passwort": "ganz-neues-passwort", "code": code}, auth=False)
-        self.assertEqual(st, 200)
-        self.assertTrue(server.load_auth()["totp"]["enabled"], "E-Mail-Link lässt 2FA bestehen")
-        self.assertIsNone(server.check_setup_token(log_tok))
-        # Link aus dem Log (Cluster-/Argo-CD-Zugriff) setzt 2FA zurück
-        server.RECOVERY_TIMES.clear()
-        with self.assertLogs("site-engine", "WARNING") as cm:
-            self.req("POST", "/admin/recover", {}, auth=False)
-        st, _ = self.req("POST", "/admin/setup", {"token": self.log_token(cm.output), "passwort": "drittes-passwort-xx"}, auth=False)
-        self.assertEqual(st, 200)
-        self.assertNotIn("totp", server.load_auth())
+    def test_notfall_link(self):
+        tok = server.create_setup_token()
+        self.assertEqual(self.req("POST", "/admin/setup", {"token": "falsch"}, auth=False)[0], 403)
+        self.assertEqual(self.req("POST", "/admin/setup", {"token": tok}, auth=False)[0], 200)
+        self.cookie = self.last_headers["Set-Cookie"].split(";")[0]
+        self.assertEqual(self.req("GET", "/api/admin/state")[0], 200)
+        self.assertEqual(self.req("POST", "/admin/setup", {"token": tok}, auth=False)[0], 403, "nur einmal")
 
 
 class TestFeaturesAndPages(HTTPBase):

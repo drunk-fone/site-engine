@@ -189,42 +189,28 @@
       </div>
 
       <div class="card">
-        <h2>🔐 Anmeldung</h2>
-        <p class="sub">Es gibt keinen Benutzernamen. Das Passwort wird nur als Hash (PBKDF2-SHA256, 600 000 Runden) auf dem persistenten Volume gespeichert und übersteht Neustarts.</p>
-        <h3>Passwort ändern</h3>
-        <div class="grid2">
-          <label><span>Aktuelles Passwort</span><input type="password" id="pw-cur" autocomplete="current-password"></label>
-          <label><span>Neues Passwort (mind. 12 Zeichen)</span><input type="password" id="pw-new" autocomplete="new-password" minlength="12"></label>
-          <label><span>Neues Passwort wiederholen</span><input type="password" id="pw-new2" autocomplete="new-password" minlength="12"></label>
-        </div>
-        <div style="margin-top:12px"><button class="btn primary" type="button" id="save-pw">Passwort ändern</button></div>
+        <h2>🔐 Anmeldung mit Google</h2>
+        <p class="sub">Angemeldet als <b id="auth-me"></b>. Zugang hat nur, wer mit einem der folgenden Google-Konten angemeldet ist. Passwörter gibt es keine; die zweite Absicherung (2FA) übernimmt Google.</p>
 
-        <h3>Passwort vergessen – Wiederherstellung</h3>
-        <p class="sub">Mit «Passwort vergessen?» auf der Anmeldeseite kommt ein Einmal-Link an diese Adresse (30 Min. gültig). Ein zweiter Link steht immer im Server-Log (Argo CD: App → Pod → Logs). Ist 2FA aktiv, verlangt der E-Mail-Link zusätzlich den Code; der Link aus dem Log setzt 2FA zurück.</p>
-        <p id="rec-hint" class="notice" hidden></p>
-        <div class="grid2" style="margin-top:12px">
-          <label><span>Wiederherstellungs-E-Mail</span><input type="email" id="rec-email" autocomplete="email" placeholder="admin@example.ch"></label>
-          <label><span>Aktuelles Passwort (zur Bestätigung)</span><input type="password" id="rec-pw" autocomplete="current-password"></label>
-        </div>
-        <div style="margin-top:12px"><button class="btn primary" type="button" id="save-rec">E-Mail speichern</button></div>
+        <h3>Google Client ID</h3>
+        <label><span id="cid-label">OAuth-Client-ID (öffentlich, kein Geheimnis)</span>
+          <input type="text" id="auth-cid" spellcheck="false" placeholder="1234567890-abc….apps.googleusercontent.com"></label>
+        <p class="sub" style="margin-top:6px">In der Google Cloud Console muss diese Domain bei der Client-ID unter «Autorisierte JavaScript-Quellen» eingetragen sein.</p>
 
-        <h3>Zwei-Faktor-Anmeldung (TOTP)</h3>
-        <p class="sub">Optional: zusätzlich ein 6-stelliger Code aus einer Authenticator-App (z. B. Aegis, 2FAS, Google/Microsoft Authenticator, Bitwarden). Alles läuft lokal auf dem Server, ohne externen Dienst.</p>
-        <p id="totp-status" class="notice"></p>
-        <div class="grid2" style="margin-top:12px">
-          <label><span>Aktuelles Passwort (zur Bestätigung)</span><input type="password" id="totp-pw" autocomplete="current-password"></label>
-        </div>
-        <div class="row" style="margin-top:12px">
-          <button class="btn" type="button" id="totp-begin">2FA einrichten</button>
-          <button class="btn danger" type="button" id="totp-disable" hidden>2FA deaktivieren</button>
-        </div>
-        <div id="totp-setup" class="notice" style="margin-top:12px" hidden>
-          <p style="margin-top:0">1. Füge in der Authenticator-App ein neues Konto manuell hinzu (Typ «zeitbasiert») mit diesem Schlüssel:</p>
-          <p><code class="secret" id="totp-secret"></code></p>
-          <p>Auf dem Handy kannst du auch direkt diesen Link öffnen: <a id="totp-uri" href="#">In Authenticator-App öffnen</a></p>
-          <p>2. Gib zur Bestätigung den aktuellen Code ein:</p>
-          <div class="row"><input type="text" id="totp-code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" style="max-width:160px">
-            <button class="btn primary" type="button" id="totp-enable">Aktivieren</button></div>
+        <h3>Erlaubte Google-Konten</h3>
+        <div id="auth-env-emails" class="row" style="margin-bottom:8px"></div>
+        <label><span>Zusätzliche Konten (eine E-Mail pro Zeile)</span>
+          <textarea id="auth-emails" rows="4" spellcheck="false" placeholder="kunde@gmail.com"></textarea></label>
+        <div style="margin-top:12px"><button class="btn primary" type="button" id="save-access">Zugang speichern</button></div>
+
+        <h3>Notfall-Codes</h3>
+        <p class="sub">Für den Fall, dass die Google-Anmeldung nicht funktioniert: 10 Einmal-Codes, z. B. in Vaultwarden ablegen. Jeder Code funktioniert genau einmal. Neue Codes ersetzen alle alten.</p>
+        <p id="codes-status" class="notice"></p>
+        <div style="margin-top:12px"><button class="btn" type="button" id="new-codes">Neue Notfall-Codes erzeugen</button></div>
+        <div id="codes-box" class="notice" style="margin-top:12px" hidden>
+          <p style="margin-top:0"><b>Jetzt sichern – die Codes werden nur dieses eine Mal angezeigt.</b></p>
+          <textarea id="codes-text" rows="10" readonly spellcheck="false" style="font-family:ui-monospace,monospace"></textarea>
+          <div class="row" style="margin-top:8px"><button class="btn small" type="button" id="codes-copy">Kopieren</button></div>
         </div>
       </div>
 

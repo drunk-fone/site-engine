@@ -414,52 +414,39 @@
     postJSON('/api/admin/test-email', {}).then(done('Test-E-Mail erfolgreich gesendet!'));
   });
 
-  // Passwort & 2FA
-  $('save-pw').addEventListener('click', function () {
-    var n = $('pw-new').value;
-    if (n !== $('pw-new2').value) return toast('Die neuen Passwörter stimmen nicht überein.', 'err');
-    postJSON('/api/admin/password', { aktuell: $('pw-cur').value, neu: n }).then(done('Passwort geändert. Andere Sitzungen wurden abgemeldet.', function () {
-      $('pw-cur').value = $('pw-new').value = $('pw-new2').value = '';
-    }));
-  });
+  // Anmeldung: Google-Konten & Notfall-Codes
   function renderAuth(a) {
     a = a || {};
-    $('rec-email').value = a.email || '';
-    $('rec-email').placeholder = a.email_env ? a.email_env + ' (aus ADMIN_EMAIL)' : 'admin@example.ch';
-    var hints = [];
-    if (!a.email && !a.email_env) hints.push('Noch keine Wiederherstellungs-E-Mail: Links kommen nur ins Server-Log.');
-    if (!a.smtp_ok) hints.push('SMTP ist noch nicht eingerichtet (unten unter E-Mail & Webseite): ohne SMTP kein Versand.');
-    if (!a.url_ok) hints.push('Die Webseiten-URL fehlt (unten unter E-Mail & Webseite): ohne sie wird kein Link per E-Mail verschickt.');
-    $('rec-hint').textContent = hints.join(' ');
-    $('rec-hint').hidden = !hints.length;
-    var on = !!a.totp;
-    $('totp-status').textContent = on ? '✓ Zwei-Faktor-Anmeldung ist aktiv.' : 'Zwei-Faktor-Anmeldung ist nicht aktiv.';
-    $('totp-begin').textContent = on ? '2FA neu einrichten (anderes Gerät)' : '2FA einrichten';
-    $('totp-disable').hidden = !on;
+    $('auth-me').textContent = a.ich === 'notfall-code' ? 'Notfall-Code' : a.ich === 'notfall-link' ? 'Notfall-Link' : (a.ich || '?');
+    $('auth-cid').value = a.client_id || '';
+    $('auth-cid').readOnly = !!a.client_id_env;
+    $('cid-label').textContent = a.client_id_env ? 'OAuth-Client-ID (aus der ConfigMap: GOOGLE_CLIENT_ID)' : 'OAuth-Client-ID (öffentlich, kein Geheimnis)';
+    $('auth-env-emails').innerHTML = (a.emails_env || []).map(function (e) {
+      return '<span class="badge ok" title="aus ADMIN_EMAILS (ConfigMap)">' + esc(e) + ' · ConfigMap</span>';
+    }).join(' ');
+    $('auth-emails').value = (a.emails || []).filter(function (e) { return (a.emails_env || []).indexOf(e) < 0; }).join('\n');
+    var n = a.notfall_codes || 0;
+    $('codes-status').textContent = n ? n + ' von 10 Notfall-Codes übrig.' : 'Noch keine Notfall-Codes – empfohlen, damit du auch ohne Google reinkommst.';
+    $('codes-status').className = 'notice' + (n ? '' : ' err');
   }
-  $('save-rec').addEventListener('click', function () {
-    postJSON('/api/admin/recovery-email', { aktuell: $('rec-pw').value, email: $('rec-email').value.trim() })
-      .then(done('Wiederherstellungs-E-Mail gespeichert', function () { $('rec-pw').value = ''; loadState(); }));
+  $('save-access').addEventListener('click', function () {
+    var body = { emails: $('auth-emails').value.split(/[\s,;]+/).filter(Boolean) };
+    if (!$('auth-cid').readOnly) body.client_id = $('auth-cid').value.trim();
+    postJSON('/api/admin/access', body).then(done('Zugang gespeichert', loadState));
   });
-  $('totp-begin').addEventListener('click', function () {
-    postJSON('/api/admin/totp-begin', { aktuell: $('totp-pw').value }).then(function (res) {
-      if (!res.ok) return toast(res.error || 'Fehler', 'err');
-      $('totp-secret').textContent = res.secret.replace(/(.{4})/g, '$1 ').trim();
-      $('totp-uri').href = res.uri;
-      $('totp-setup').hidden = false;
-      $('totp-code').focus();
-    });
-  });
-  $('totp-enable').addEventListener('click', function () {
-    postJSON('/api/admin/totp-enable', { code: $('totp-code').value }).then(done('Zwei-Faktor-Anmeldung aktiviert', function () {
-      $('totp-setup').hidden = true; $('totp-code').value = ''; $('totp-pw').value = ''; loadState();
+  $('new-codes').addEventListener('click', function () {
+    if (STATE.auth && STATE.auth.notfall_codes && !confirm('Neue Codes erzeugen? Alle bisherigen Codes werden ungültig.')) return;
+    postJSON('/api/admin/notfall-codes', {}).then(done('Neue Notfall-Codes erzeugt', function (res) {
+      $('codes-text').value = res.codes.join('\n');
+      $('codes-box').hidden = false;
+      loadState();
     }));
   });
-  $('totp-disable').addEventListener('click', function () {
-    if (!confirm('Zwei-Faktor-Anmeldung wirklich deaktivieren?')) return;
-    postJSON('/api/admin/totp-disable', { aktuell: $('totp-pw').value }).then(done('Zwei-Faktor-Anmeldung deaktiviert', function () {
-      $('totp-pw').value = ''; loadState();
-    }));
+  $('codes-copy').addEventListener('click', function () {
+    var t = $('codes-text');
+    t.select();
+    (navigator.clipboard ? navigator.clipboard.writeText(t.value) : Promise.reject()).then(function () { toast('Kopiert'); },
+      function () { try { document.execCommand('copy'); toast('Kopiert'); } catch (e) { toast('Bitte manuell kopieren', 'err'); } });
   });
 
   // -------------------------------------------------------------------- Laden

@@ -5,9 +5,9 @@ Liefert die Webseite aus /data/site/public (Fallback: app/public) aus, nimmt
 Bestellungen (POST /api/bestellung) und Kontaktanfragen (POST /api/kontakt) an
 und bietet unter /admin ein Verwaltungs-UI. Nur Python-Standardbibliothek.
 
-Admin-Zugang: Es gibt keinen Benutzernamen und kein Passwort im Image oder Repo.
-Passwort setzen/zurücksetzen:   python /app/server.py reset-admin
-(erzeugt einen 15 Minuten gültigen Einmal-Link, z. B. via `kubectl exec`).
+Admin-Zugang: «Sign in with Google» – erlaubte Konten in ADMIN_EMAILS, Client ID in
+GOOGLE_CLIENT_ID (beides ConfigMap, kein Secret nötig). Notfall: Notfall-Codes im Admin
+oder `python /app/server.py notfall-link`.
 """
 import base64
 import csv
@@ -52,14 +52,13 @@ COOKIE_SECURE = ENV("COOKIE_SECURE", "1") == "1"
 SESSION_COOKIE = "__Host-se_session" if COOKIE_SECURE else "se_session"
 SESSION_IDLE = int(ENV("SESSION_IDLE", "7200"))        # 2 h Inaktivität
 SESSION_MAX_AGE = int(ENV("SESSION_MAX_AGE", "43200"))  # max. 12 h
-PBKDF2_ITER = 600_000                                   # OWASP-Empfehlung für PBKDF2-SHA256
-MIN_PASSWORD = 12
-MAX_PASSWORD = 1024
-SETUP_TTL = 1800             # Links aus «Passwort vergessen» / reset-admin: 30 Min.
-SETUP_TTL_INITIAL = 86400    # Einrichtungs-Link beim Start ohne Passwort: 24 h
+NONCE_COOKIE = "__Host-se_nonce" if COOKIE_SECURE else "se_nonce"
+NOTFALL_TTL = 900            # Notfall-Link (CLI): 15 Min.
+NOTFALL_TTL_INITIAL = 86400  # Notfall-Link beim Start ohne jede Anmeldemöglichkeit: 24 h
 MAX_SETUP_TOKENS = 5
-RECOVERY_MAX = 3             # Link-Anforderungen pro Zeitfenster (global)
-RECOVERY_WINDOW = 900
+NOTFALL_CODE_COUNT = 10
+GOOGLE_CERTS_URL = ENV("GOOGLE_CERTS_URL", "https://www.googleapis.com/oauth2/v3/certs")
+GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
 LOGIN_MAX_FAILS = 5
 LOGIN_WINDOW = 900
 LOGIN_GLOBAL_MAX = 50
@@ -417,8 +416,18 @@ def check_rate(ip):
     return True
 
 
-# ------------------------------------------------------- Passwort, 2FA, Login
+# ------------------------------------------------------ Anmeldung mit Google
+# «Sign in with Google» (Google Identity Services): Der Browser erhält von Google ein
+# signiertes ID-Token (JWT, RS256) und schickt es an /admin/google. Der Server prüft
+# Signatur (Googles öffentliche Schlüssel), Aussteller, Client ID, Ablauf, Nonce und die
+# bestätigte E-Mail gegen die Liste erlaubter Konten. Es braucht KEIN Client Secret:
+# Die Client ID ist öffentlich und darf in der ConfigMap stehen (GOOGLE_CLIENT_ID).
 AUTH_LOCK = threading.Lock()
+CLIENT_ID_RE = re.compile(r"^[0-9]{6,30}-[a-z0-9]{10,64}\.apps\.googleusercontent\.com$")
+
+
+class AuthFehler(Exception):
+    pass
 
 
 def load_auth() -> dict:
@@ -430,109 +439,205 @@ def save_auth(d: dict):
     write_private_json(auth_file(), d)
 
 
-def password_is_set() -> bool:
-    return bool(load_auth().get("pw"))
-
-
-def hash_password(pw: str) -> str:
-    salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, PBKDF2_ITER)
-    return f"pbkdf2_sha256${PBKDF2_ITER}${salt.hex()}${digest.hex()}"
-
-
-def verify_password(pw: str, stored: str):
-    """Gibt (ok, neu_hashen) zurück. Unterstützt das alte 100k-Format nur zur Migration."""
-    try:
-        algo, iters, salt, digest = str(stored).split("$", 3)
-        iters = int(iters)
-        if algo == "pbkdf2_sha256":
-            salt_b = bytes.fromhex(salt)
-        elif algo == "legacy_pbkdf2":
-            salt_b = salt.encode("utf-8")
-        else:
-            return False, False
-    except (ValueError, TypeError):
-        return False, False
-    if not 1000 <= iters <= 10_000_000 or not isinstance(pw, str) or len(pw) > MAX_PASSWORD:
-        return False, False
-    calc = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt_b, iters).hex()
-    ok = hmac.compare_digest(calc.encode(), digest.encode())
-    return ok, ok and (algo != "pbkdf2_sha256" or iters < PBKDF2_ITER)
-
-
-def check_new_password(pw) -> str:
-    if not isinstance(pw, str) or len(pw) < MIN_PASSWORD:
-        raise Fehler(f"Das Passwort muss mindestens {MIN_PASSWORD} Zeichen lang sein.")
-    if len(pw) > MAX_PASSWORD:
-        raise Fehler("Das Passwort ist zu lang.")
-    return pw
-
-
-def totp_new_secret() -> str:
-    return base64.b32encode(secrets.token_bytes(20)).decode().rstrip("=")
-
-
-def totp_at(secret: str, counter: int, digits: int = 6) -> str:
-    key = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8))
-    h = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
-    o = h[-1] & 0x0F
-    val = (struct.unpack(">I", h[o:o + 4])[0] & 0x7FFFFFFF) % (10 ** digits)
-    return str(val).zfill(digits)
-
-
-def totp_check(secret: str, code, last_counter: int = -1, now=None):
-    """RFC 6238 (SHA1, 6 Ziffern, 30 s, ±1 Schritt). Gibt den Zähler zurück oder None.
-    Bereits benutzte Codes (Zähler <= last_counter) werden abgelehnt (Replay-Schutz)."""
-    code = re.sub(r"\s", "", str(code or ""))
-    if not secret or not re.fullmatch(r"\d{6}", code):
-        return None
-    cur = int((time.time() if now is None else now) // 30)
-    for c in (cur - 1, cur, cur + 1):
-        if c > last_counter and hmac.compare_digest(totp_at(secret, c).encode(), code.encode()):
-            return c
-    return None
-
-
 def sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
+def norm_email(e) -> str:
+    return str(e or "").strip().lower()
+
+
+def env_admin_emails() -> list:
+    out = {norm_email(e) for e in re.split(r"[,;\s]+", ENV("ADMIN_EMAILS", "")) if e.strip()}
+    return sorted(e for e in out if EMAIL_RE.match(e))
+
+
+def admin_emails(a=None) -> list:
+    """Erlaubte Google-Konten: ADMIN_EMAILS (ConfigMap) + im Admin hinzugefügte."""
+    a = load_auth() if a is None else a
+    ui = [norm_email(e) for e in a.get("emails") or [] if EMAIL_RE.match(norm_email(e))]
+    return sorted(set(env_admin_emails()) | set(ui))
+
+
+def google_client_id(a=None) -> str:
+    env = ENV("GOOGLE_CLIENT_ID", "").strip()
+    if env:
+        return env
+    a = load_auth() if a is None else a
+    return str(a.get("google_client_id") or "").strip()
+
+
+def b64url_decode(s) -> bytes:
+    s = str(s)
+    if not re.fullmatch(r"[A-Za-z0-9_-]*", s):
+        raise ValueError("kein base64url")
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+SHA256_DIGEST_INFO = bytes.fromhex("3031300d060960864801650304020105000420")
+
+
+def rsa_sha256_verify(n: int, e: int, msg: bytes, sig: bytes) -> bool:
+    """RSASSA-PKCS1-v1_5 / SHA-256 (RFC 8017). Verglichen wird die GESAMTE erwartete
+    Kodierung statt die Padding-Struktur zu parsen – das schliesst Signaturfälschungen
+    (Bleichenbacher 2006) aus. Nur Schlüssel >= 2048 Bit mit e = 65537."""
+    k = (n.bit_length() + 7) // 8
+    if n.bit_length() < 2048 or e != 65537 or len(sig) != k:
+        return False
+    s = int.from_bytes(sig, "big")
+    if s >= n:
+        return False
+    em = pow(s, e, n).to_bytes(k, "big")
+    t = SHA256_DIGEST_INFO + hashlib.sha256(msg).digest()
+    expected = b"\x00\x01" + b"\xff" * (k - len(t) - 3) + b"\x00" + t
+    return hmac.compare_digest(em, expected)
+
+
+JWKS = {"keys": {}, "expires": 0.0, "fetched": 0.0}
+JWKS_LOCK = threading.Lock()
+
+
+def _fetch_google_keys():
+    import urllib.request
+    req = urllib.request.Request(GOOGLE_CERTS_URL, headers={"User-Agent": "site-engine"})
+    with urllib.request.urlopen(req, timeout=5) as r:
+        cache = r.headers.get("Cache-Control", "")
+        data = json.loads(r.read(256 * 1024).decode("utf-8"))
+    m = re.search(r"max-age=(\d+)", cache)
+    ttl = min(int(m.group(1)), 86400) if m else 3600
+    keys = {}
+    for k in data.get("keys", []) if isinstance(data, dict) else []:
+        if (isinstance(k, dict) and k.get("kty") == "RSA" and k.get("kid") and k.get("alg", "RS256") == "RS256"
+                and k.get("use", "sig") == "sig"):
+            keys[str(k["kid"])] = (int.from_bytes(b64url_decode(k["n"]), "big"), int.from_bytes(b64url_decode(k["e"]), "big"))
+    return keys, ttl
+
+
+def google_key(kid: str):
+    """Öffentlicher Schlüssel zu `kid`. Cache gemäss Cache-Control; bei unbekanntem kid
+    neu laden (höchstens alle 30 s). Ist Google kurz nicht erreichbar, gilt der alte Cache."""
+    now = time.time()
+    with JWKS_LOCK:
+        if (kid not in JWKS["keys"] or now >= JWKS["expires"]) and now - JWKS["fetched"] >= 30:
+            JWKS["fetched"] = now
+            try:
+                keys, ttl = _fetch_google_keys()
+                JWKS["keys"], JWKS["expires"] = keys, now + ttl
+            except Exception as e:
+                log.warning("Google-Schlüssel konnten nicht geladen werden: %s", e)
+        return JWKS["keys"].get(kid)
+
+
+def verify_google_token(token, client_id: str, nonce: str, now=None) -> dict:
+    """Prüft ein Google-ID-Token vollständig und gibt die Claims zurück (sonst AuthFehler)."""
+    if not client_id:
+        raise AuthFehler("Google-Anmeldung ist noch nicht eingerichtet")
+    if not isinstance(token, str) or len(token) > 8192 or token.count(".") != 2:
+        raise AuthFehler("ungültiges Token")
+    h64, p64, s64 = token.split(".")
+    try:
+        header = json.loads(b64url_decode(h64))
+        claims = json.loads(b64url_decode(p64))
+        sig = b64url_decode(s64)
+    except (ValueError, UnicodeDecodeError):
+        raise AuthFehler("ungültiges Token")
+    if not isinstance(header, dict) or not isinstance(claims, dict) or header.get("alg") != "RS256":
+        raise AuthFehler("ungültiges Token")
+    key = google_key(str(header.get("kid") or ""))
+    if not key or not rsa_sha256_verify(key[0], key[1], f"{h64}.{p64}".encode("ascii"), sig):
+        raise AuthFehler("Signatur ungültig")
+    now = time.time() if now is None else now
+    if claims.get("iss") not in GOOGLE_ISSUERS:
+        raise AuthFehler("falscher Aussteller")
+    if claims.get("aud") != client_id:
+        raise AuthFehler("Token gehört zu einer anderen Anwendung")
+    exp, iat = claims.get("exp"), claims.get("iat")
+    if not isinstance(exp, (int, float)) or isinstance(exp, bool) or exp < now - 60:
+        raise AuthFehler("Token abgelaufen")
+    if not isinstance(iat, (int, float)) or isinstance(iat, bool) or iat > now + 300:
+        raise AuthFehler("ungültiger Ausstellungszeitpunkt")
+    tn = claims.get("nonce")
+    if not nonce or not isinstance(tn, str) or not hmac.compare_digest(tn.encode(), nonce.encode()):
+        raise AuthFehler("Anmeldung abgelaufen, bitte Seite neu laden")
+    if claims.get("email_verified") not in (True, "true"):
+        raise AuthFehler("E-Mail-Adresse ist bei Google nicht bestätigt")
+    email = norm_email(claims.get("email"))
+    if not EMAIL_RE.match(email):
+        raise AuthFehler("keine E-Mail-Adresse im Token")
+    return dict(claims, email=email)
+
+
+USED_NONCES, NONCE_LOCK = {}, threading.Lock()
+
+
+def nonce_unused(nonce: str) -> bool:
+    """Jede Nonce (und damit jedes Google-Token) gilt nur für EINE Anmeldung (Replay-Schutz)."""
+    now = time.time()
+    with NONCE_LOCK:
+        for k in [k for k, exp in USED_NONCES.items() if exp < now]:
+            del USED_NONCES[k]
+        if nonce in USED_NONCES or len(USED_NONCES) > 10000:
+            return False
+        USED_NONCES[nonce] = now + 3600
+        return True
+
+
+# Notfall-Codes (wie bei GitHub): 10 Einmal-Codes für den Fall, dass Google nicht geht.
+def new_notfall_codes() -> list:
+    codes = [base64.b32encode(secrets.token_bytes(10)).decode() for _ in range(NOTFALL_CODE_COUNT)]
+    return ["-".join(c[i:i + 4] for i in range(0, 16, 4)) for c in codes]
+
+
+def norm_notfall_code(code) -> str:
+    return re.sub(r"[^A-Z2-7]", "", str(code or "").upper())[:32]
+
+
+def use_notfall_code(code):
+    """Muss unter AUTH_LOCK aufgerufen werden. Gibt die Anzahl übriger Codes oder None zurück."""
+    c = norm_notfall_code(code)
+    if len(c) != 16:
+        return None
+    a = load_auth()
+    hashes = [h for h in a.get("notfall_codes") or [] if isinstance(h, str)]
+    h = sha256_hex(c).encode()
+    for i, stored in enumerate(hashes):
+        if hmac.compare_digest(h, stored.encode()):
+            del hashes[i]
+            a["notfall_codes"] = hashes
+            save_auth(a)
+            return len(hashes)
+    return None
+
+
+# Notfall-Link (letzter Ausweg per CLI): öffnet direkt eine Admin-Sitzung.
 def _load_setup_tokens() -> list:
     d = read_json(setup_token_file(), {})
     toks = d.get("tokens") if isinstance(d, dict) else None
-    if not isinstance(toks, list):  # älteres Einzel-Format
-        toks = [dict(d, art="log")] if isinstance(d, dict) and d.get("hash") else []
+    if not isinstance(toks, list):
+        toks = []
     now = time.time()
     return [t for t in toks if isinstance(t, dict) and t.get("hash") and float(t.get("expires", 0)) > now]
 
 
-def create_setup_token(art: str = "log", ttl: int = SETUP_TTL, force: bool = False):
-    """Einmal-Token für /admin/setup; gespeichert wird nur der SHA-256-Hash.
-    art='log'   – steht im Server-Log oder kam von reset-admin (Zugriff auf Cluster/Argo CD):
-                  setzt beim Einlösen auch 2FA zurück.
-    art='email' – wurde per E-Mail verschickt: verlangt bei aktiver 2FA zusätzlich den Code.
-    Bestehende Links werden nie überschrieben; sind schon MAX_SETUP_TOKENS aktiv, gibt es
-    (ausser mit force) keinen neuen – so kann niemand per Knopfdruck gültige Links entwerten."""
+def create_setup_token(ttl: int = NOTFALL_TTL, force: bool = False):
+    """Einmal-Token; gespeichert wird nur der SHA-256-Hash. Bestehende werden nie
+    überschrieben; sind MAX_SETUP_TOKENS aktiv, gibt es (ausser mit force) keinen neuen."""
     toks = _load_setup_tokens()
     if len(toks) >= MAX_SETUP_TOKENS:
         if not force:
             return None
         toks = sorted(toks, key=lambda t: float(t["expires"]))[-(MAX_SETUP_TOKENS - 1):]
     tok = secrets.token_urlsafe(32)
-    toks.append({"hash": sha256_hex(tok), "expires": time.time() + ttl, "art": art})
+    toks.append({"hash": sha256_hex(tok), "expires": time.time() + ttl})
     write_private_json(setup_token_file(), {"tokens": toks})
     return tok
 
 
-def check_setup_token(tok):
-    """Gibt die Art ('log'/'email') eines gültigen Tokens zurück, sonst None."""
+def check_setup_token(tok) -> bool:
     if not isinstance(tok, str) or not tok or len(tok) > 200:
-        return None
+        return False
     h = sha256_hex(tok).encode()
-    for t in _load_setup_tokens():
-        if hmac.compare_digest(h, str(t["hash"]).encode()):
-            return t.get("art", "log")
-    return None
+    return any(hmac.compare_digest(h, str(t["hash"]).encode()) for t in _load_setup_tokens())
 
 
 def clear_setup_tokens():
@@ -546,75 +651,21 @@ def consume_setup_token(tok) -> bool:
     return False
 
 
-def setup_link(tok: str) -> str:
-    return f"{site_base_url()}/admin/setup#{tok}"
-
-
-def recovery_email(a=None) -> str:
-    a = load_auth() if a is None else a
-    e = str(a.get("email") or ENV("ADMIN_EMAIL", "") or "").strip()
-    return e if EMAIL_RE.match(e) else ""
-
-
-RECOVERY_TIMES, RECOVERY_LOCK = [], threading.Lock()
-
-
-def recovery_allowed() -> bool:
-    now = time.time()
-    with RECOVERY_LOCK:
-        RECOVERY_TIMES[:] = [t for t in RECOVERY_TIMES if now - t < RECOVERY_WINDOW]
-        if len(RECOVERY_TIMES) >= RECOVERY_MAX:
-            return False
-        RECOVERY_TIMES.append(now)
-        return True
-
-
 def log_setup_link(tok: str, ttl: int, reason: str):
     base = site_base_url()
     log.warning("=" * 72)
-    log.warning("ADMIN-%s – Einmal-Link (gültig %s):", reason, f"{ttl // 3600} h" if ttl >= 3600 else f"{ttl // 60} Min.")
+    log.warning("ADMIN-%s – Notfall-Link (gültig %s):", reason, f"{ttl // 3600} h" if ttl >= 3600 else f"{ttl // 60} Min.")
     log.warning("  %s/admin/setup#%s", base or "https://<deine-domain>", tok)
-    if not base:
-        log.warning("  (Webseiten-URL ist nicht gesetzt: Domain der Seite vor /admin/setup einsetzen)")
     log.warning("=" * 72)
-
-
-def request_recovery(ip: str):
-    """«Passwort vergessen» / «Neuen Link erzeugen»: immer ein Link ins Server-Log, zusätzlich per
-    E-Mail an die Wiederherstellungs-Adresse, falls diese, SMTP und die Webseiten-URL gesetzt sind.
-    Die Link-Domain kommt nur aus der Konfiguration – nie aus dem Host-Header der Anfrage."""
-    with AUTH_LOCK:
-        a = load_auth()
-        ttl = SETUP_TTL if a.get("pw") else SETUP_TTL_INITIAL
-        tok = create_setup_token("log", ttl)
-        if tok:
-            log_setup_link(tok, ttl, "WIEDERHERSTELLUNG angefordert von " + ip if a.get("pw") else "EINRICHTUNG")
-        email, base = recovery_email(a), site_base_url()
-        cfg = get_effective_settings()
-        etok = create_setup_token("email", SETUP_TTL) if email and base and cfg["smtp_user"] and cfg["smtp_pass"] else None
-    if etok:
-        body = (f"Für die Administration von {cfg['shop_name']} wurde ein Link zum Setzen des Passworts angefordert "
-                f"(von IP {ip}).\n\nLink (einmalig, {SETUP_TTL // 60} Minuten gültig):\n{setup_link(etok)}\n\n"
-                "Ist die Zwei-Faktor-Anmeldung aktiv, brauchst du zusätzlich den Code aus deiner Authenticator-App.\n\n"
-                "Warst du das nicht? Dann ignoriere diese E-Mail – dein Passwort bleibt unverändert.\n")
-
-        def _send():
-            try:
-                send_mail(email, f"Passwort-Link für {cfg['shop_name']}", body, force_live=True)
-                log.info("Wiederherstellungs-E-Mail verschickt")
-            except Exception as e:
-                log.error("Wiederherstellungs-E-Mail fehlgeschlagen: %s", e)
-        # im Hintergrund: gleiche Antwortzeit, egal ob eine E-Mail hinterlegt ist
-        threading.Thread(target=_send, daemon=True).start()
 
 
 SESSIONS, SESS_LOCK = {}, threading.Lock()
 
 
-def new_session():
+def new_session(email: str = ""):
     tok = secrets.token_urlsafe(32)
     now = time.time()
-    sess = {"csrf": secrets.token_urlsafe(32), "created": now, "seen": now}
+    sess = {"csrf": secrets.token_urlsafe(32), "created": now, "seen": now, "email": email}
     with SESS_LOCK:
         for k in [k for k, s in SESSIONS.items() if session_expired(s, now)]:
             del SESSIONS[k]
@@ -683,22 +734,29 @@ def login_succeeded(ip):
 
 
 def migrate_legacy_auth():
-    """Übernimmt ein altes, im Volume gespeichertes Passwort (settings.json) in auth.json.
-    Benutzername und Umgebungsvariablen werden nicht mehr verwendet."""
+    """Entfernt Passwort-Altlasten (1.x: settings.json, 2.0-rc.1: auth.json). Anmeldung nur noch über Google."""
     s = load_runtime_settings()
-    legacy = {k: s.pop(k) for k in ("admin_user", "admin_password_hash") if k in s}
-    if legacy:
-        old = str(legacy.get("admin_password_hash") or "")
-        with AUTH_LOCK:
-            a = load_auth()
-            if not a.get("pw") and old.count("$") == 1:
-                a["pw"] = "legacy_pbkdf2$100000$" + old
-                save_auth(a)
-                log.info("Bisheriges Admin-Passwort übernommen (wird beim nächsten Login neu gehasht).")
+    if any(k in s for k in ("admin_user", "admin_password_hash")):
+        for k in ("admin_user", "admin_password_hash"):
+            s.pop(k, None)
         save_runtime_settings(s)
-    for k in ("ADMIN_USER", "ADMIN_PASSWORD", "ADMIN_PASSWORD_HASH"):
+        log.info("Altes Admin-Passwort aus settings.json entfernt (Anmeldung jetzt mit Google).")
+    with AUTH_LOCK:
+        a = load_auth()
+        old = [k for k in ("pw", "totp", "totp_pending", "geaendert", "email") if k in a]
+        if old:
+            for k in old:
+                a.pop(k)
+            save_auth(a)
+            log.info("Passwort-/2FA-Daten aus auth.json entfernt (Anmeldung jetzt mit Google).")
+    for k in ("ADMIN_USER", "ADMIN_PASSWORD", "ADMIN_PASSWORD_HASH", "ADMIN_EMAIL"):
         if ENV(k):
             log.warning("Umgebungsvariable %s wird nicht mehr unterstützt und ignoriert.", k)
+
+
+def admin_login_possible(a=None) -> bool:
+    a = load_auth() if a is None else a
+    return bool((google_client_id(a) and admin_emails(a)) or a.get("notfall_codes"))
 
 
 # ---------------------------------------------------------------- Speichern
@@ -1495,6 +1553,13 @@ ADMIN_CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
     "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
 )
+# Login-Seite: zusätzlich nur das offizielle Google-Skript für «Sign in with Google».
+LOGIN_CSP = (
+    "default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; "
+    "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; "
+    "frame-src https://accounts.google.com/gsi/; connect-src 'self' https://accounts.google.com/gsi/; "
+    "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+)
 # SVGs werden ohne Skriptausführung ausgeliefert (auch beim direkten Öffnen).
 SVG_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox"
 
@@ -1532,13 +1597,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def send(self, code, body=b"", ctype="text/plain; charset=utf-8", extra=None, head=False, csp=SITE_CSP):
         self.send_response(code)
+        extra = extra or {}
         for k, v in SEC_HEADERS.items():
-            self.send_header(k, v)
+            if k not in extra:
+                self.send_header(k, v)
         self.send_header("Content-Security-Policy", csp)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        for k, v in (extra or {}).items():
-            self.send_header(k, v)
+        for k, v in extra.items():
+            for item in (v if isinstance(v, list) else [v]):
+                self.send_header(k, item)
         self.end_headers()
         if not head:
             self.wfile.write(body)
@@ -1608,7 +1676,7 @@ class Handler(BaseHTTPRequestHandler):
             sess = self.session()
             if not sess:
                 return self.json(401, {"ok": False, "error": "Nicht angemeldet", "login": True})
-            return self.admin_get(path, parsed.query, head)
+            return self.admin_get(path, parsed.query, head, sess)
         if self.maintenance_active():
             return self.send(503, maintenance_page(), "text/html; charset=utf-8", head=head,
                              extra={"Retry-After": "3600", "Cache-Control": "no-store"})
@@ -1655,7 +1723,8 @@ class Handler(BaseHTTPRequestHandler):
         if ctype.startswith("text/") or ctype.endswith("+xml"):
             ctype += "; charset=utf-8"
         stt = target.stat()
-        etag = f'"{stt.st_mtime_ns:x}-{len(data):x}"'
+        # Inode ändert sich bei jedem Upload (os.replace) – auch bei gleicher Grösse und Zeit
+        etag = f'"{stt.st_ino:x}-{stt.st_mtime_ns:x}-{len(data):x}"'
         if target.suffix.lower() == ".html" and feature_enabled("seo"):
             data = inject_seo(data.decode("utf-8", errors="replace"), "/" if page_slug in ("", "index.html") else "/" + page_slug).encode("utf-8")
             # Inhalt hängt auch von den SEO-Einstellungen ab -> Hash über das Ergebnis
@@ -1672,11 +1741,20 @@ class Handler(BaseHTTPRequestHandler):
         admin_headers = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"}
         if path in ADMIN_PUBLIC_FILES:
             fname, ctype = ADMIN_PUBLIC_FILES[path]
+            if path == "/admin/login":
+                # Google-Popup braucht COOP same-origin-allow-popups
+                return self.send(200, (ADMIN_DIR / fname).read_bytes(), ctype, head=head, csp=LOGIN_CSP,
+                                 extra=dict(admin_headers, **{"Cross-Origin-Opener-Policy": "same-origin-allow-popups"}))
             return self.send(200, (ADMIN_DIR / fname).read_bytes(), ctype, extra=admin_headers,
                              head=head, csp=ADMIN_CSP)
         if path == "/admin/login-info":
             a = load_auth()
-            return self.json(200, {"setup": not a.get("pw"), "totp": bool((a.get("totp") or {}).get("enabled"))})
+            nonce = secrets.token_urlsafe(24)
+            cookie = (f"{NONCE_COOKIE}={nonce}; Path=/; Max-Age=600; HttpOnly; SameSite=Strict"
+                      + ("; Secure" if COOKIE_SECURE else ""))
+            return self.json(200, {"client_id": google_client_id(a), "erlaubt": bool(admin_emails(a)),
+                                   "notfall": bool(a.get("notfall_codes")), "nonce": nonce},
+                             extra={"Set-Cookie": cookie})
         if path in ADMIN_PRIVATE_FILES:
             sess = self.session()
             if not sess:
@@ -1690,7 +1768,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, body, ctype, extra=admin_headers, head=head, csp=ADMIN_CSP)
         return self.send(404, b"Nicht gefunden", head=head, extra=admin_headers)
 
-    def admin_get(self, path, query, head):
+    def admin_get(self, path, query, head, sess):
         if path == "/api/admin/state":
             idx = active_index_file()
             html = idx.read_text(encoding="utf-8") if idx.exists() else ""
@@ -1723,11 +1801,12 @@ class Handler(BaseHTTPRequestHandler):
                     "wartung_text": cfg["wartung_text"],
                 },
                 "auth": {
-                    "totp": bool((a.get("totp") or {}).get("enabled")),
-                    "email": a.get("email") or "",
-                    "email_env": ENV("ADMIN_EMAIL", ""),
-                    "smtp_ok": bool(cfg["smtp_user"] and cfg["smtp_pass"]),
-                    "url_ok": bool(site_base_url()),
+                    "client_id": google_client_id(a),
+                    "client_id_env": bool(ENV("GOOGLE_CLIENT_ID", "").strip()),
+                    "emails": sorted({norm_email(e) for e in a.get("emails") or []}),
+                    "emails_env": env_admin_emails(),
+                    "ich": sess.get("email", ""),
+                    "notfall_codes": len(a.get("notfall_codes") or []),
                 },
                 "bilder": build_bilder_state(),
                 "html": html,
@@ -1764,7 +1843,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         path = unquote(parsed.path)
 
-        if path in ("/admin/login", "/admin/setup", "/admin/logout", "/admin/recover"):
+        if path in ("/admin/google", "/admin/notfall", "/admin/setup", "/admin/logout"):
             return self.handle_auth_post(path)
 
         if path.startswith("/api/admin/"):
@@ -1886,75 +1965,53 @@ class Handler(BaseHTTPRequestHandler):
         if login_blocked(ip):
             return self.json(429, {"ok": False, "error": "Zu viele Fehlversuche. Bitte warte 15 Minuten."})
 
-        if path == "/admin/recover":
-            if not recovery_allowed():
-                return self.json(429, {"ok": False, "error": "Es wurden gerade schon Links angefordert. Bitte warte 15 Minuten."})
-            request_recovery(ip)
-            return self.json(200, {"ok": True})
-
-        if path == "/admin/setup":
-            pw = payload.get("passwort")
-            try:
-                check_new_password(pw)
-            except Fehler as e:
-                return self.json(400, {"ok": False, "error": str(e)})
-            with AUTH_LOCK:
-                art = check_setup_token(payload.get("token"))
-                if not art:
-                    login_failed(ip)
-                    return self.json(403, {"ok": False, "error": "Der Link ist ungültig, abgelaufen oder wurde schon benutzt. "
-                                                                 "Auf der Anmeldeseite kannst du einen neuen anfordern."})
-                a = load_auth()
-                totp = a.get("totp") or {}
-                new = {"pw": hash_password(pw), "geaendert": int(time.time())}
-                if a.get("email"):
-                    new["email"] = a["email"]
-                if art == "email" and totp.get("enabled"):
-                    # Wer nur das Postfach kontrolliert, soll 2FA nicht aushebeln können.
-                    c = totp_check(totp.get("secret", ""), payload.get("code"), int(totp.get("last", -1)))
-                    if c is None:
-                        if payload.get("code"):
-                            login_failed(ip)
-                        return self.json(401, {"ok": False, "need_code": True,
-                                               "error": "Bitte gib den Code aus deiner Authenticator-App ein."})
-                    new["totp"] = dict(totp, last=c)
-                # Link aus Log/reset-admin: 2FA wird zurückgesetzt (z. B. Handy verloren).
-                save_auth(new)
-                clear_setup_tokens()
-            drop_sessions()
-            login_succeeded(ip)
-            tok, _ = new_session()
-            log.info("Admin-Passwort über Einmal-Link (%s) gesetzt von %s", art, ip)
-            return self.json(200, {"ok": True}, extra={"Set-Cookie": self.session_cookie(tok)})
-
-        # /admin/login
-        pw = payload.get("passwort")
-        with AUTH_LOCK:
+        clear_nonce = (f"{NONCE_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict"
+                       + ("; Secure" if COOKIE_SECURE else ""))
+        if path == "/admin/google":
             a = load_auth()
-            if not a.get("pw"):
-                return self.json(409, {"ok": False, "setup": True,
-                                       "error": "Noch kein Passwort gesetzt."})
-            ok, rehash = verify_password(pw if isinstance(pw, str) else "", a["pw"])
-            totp = a.get("totp") or {}
-            counter = None
-            if ok and totp.get("enabled"):
-                counter = totp_check(totp.get("secret", ""), payload.get("code"), int(totp.get("last", -1)))
-                ok = counter is not None
-            if ok:
-                if rehash:
-                    a["pw"] = hash_password(pw)
-                if counter is not None:
-                    a["totp"]["last"] = counter
-                if rehash or counter is not None:
-                    save_auth(a)
+            try:
+                claims = verify_google_token(payload.get("credential"), google_client_id(a), self.cookie(NONCE_COOKIE) or "")
+            except AuthFehler as e:
+                login_failed(ip)
+                log.warning("Google-Anmeldung abgelehnt (%s) von %s", e, ip)
+                return self.json(401, {"ok": False, "error": f"Google-Anmeldung fehlgeschlagen: {e}."},
+                                 extra={"Set-Cookie": clear_nonce})
+            if not nonce_unused(claims["nonce"]):
+                login_failed(ip)
+                return self.json(401, {"ok": False, "error": "Google-Anmeldung fehlgeschlagen: Token wurde schon benutzt."},
+                                 extra={"Set-Cookie": clear_nonce})
+            email = claims["email"]
+            if email not in admin_emails(a):
+                login_failed(ip)
+                log.warning("Google-Konto %s ist nicht berechtigt (%s)", email, ip)
+                return self.json(403, {"ok": False, "error": f"{email} hat keinen Zugang zu dieser Administration."},
+                                 extra={"Set-Cookie": clear_nonce})
+            login_succeeded(ip)
+            tok, _ = new_session(email)
+            log.info("Admin-Anmeldung mit Google: %s (%s)", email, ip)
+            return self.json(200, {"ok": True}, extra={"Set-Cookie": [self.session_cookie(tok), clear_nonce]})
+
+        if path == "/admin/notfall":
+            with AUTH_LOCK:
+                left = use_notfall_code(payload.get("code"))
+            if left is None:
+                login_failed(ip)
+                time.sleep(0.5)
+                return self.json(401, {"ok": False, "error": "Der Notfall-Code ist ungültig oder wurde schon benutzt."})
+            login_succeeded(ip)
+            tok, _ = new_session("notfall-code")
+            log.warning("Admin-Anmeldung mit Notfall-Code von %s (%d Codes übrig)", ip, left)
+            return self.json(200, {"ok": True, "uebrig": left}, extra={"Set-Cookie": self.session_cookie(tok)})
+
+        # /admin/setup – Notfall-Link aus `server.py notfall-link` bzw. dem Start-Log
+        with AUTH_LOCK:
+            ok = consume_setup_token(payload.get("token"))
         if not ok:
             login_failed(ip)
-            log.warning("Fehlgeschlagener Admin-Login von %s", ip)
-            time.sleep(0.5)
-            return self.json(401, {"ok": False, "error": "Passwort oder Code ist falsch."})
+            return self.json(403, {"ok": False, "error": "Der Notfall-Link ist ungültig, abgelaufen oder wurde schon benutzt."})
         login_succeeded(ip)
-        tok, _ = new_session()
-        log.info("Admin-Login von %s", ip)
+        tok, _ = new_session("notfall-link")
+        log.warning("Admin-Anmeldung über Notfall-Link von %s", ip)
         return self.json(200, {"ok": True}, extra={"Set-Cookie": self.session_cookie(tok)})
 
     def handle_admin_post(self, path: str, query: str, body: bytes, sess: dict):
@@ -1978,8 +2035,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return self.json(400, {"ok": False, "error": "Ungültiges JSON"})
 
-        if path in ("/api/admin/password", "/api/admin/totp-begin", "/api/admin/totp-enable", "/api/admin/totp-disable",
-                    "/api/admin/recovery-email"):
+        if path in ("/api/admin/access", "/api/admin/notfall-codes"):
             return self.handle_account_post(path, payload, sess)
 
         with STORE_LOCK:
@@ -2158,79 +2214,65 @@ class Handler(BaseHTTPRequestHandler):
         return self.json(404, {"ok": False, "error": "Unbekannter Admin-Endpunkt"})
 
     def handle_account_post(self, path, payload, sess):
-        """Passwort ändern und 2FA verwalten – jeweils mit Bestätigung des aktuellen Passworts."""
-        ip = self.client_ip()
-        if login_blocked(ip):
-            return self.json(429, {"ok": False, "error": "Zu viele Fehlversuche. Bitte warte 15 Minuten."})
+        """Zugang verwalten: erlaubte Google-Konten, Client ID, Notfall-Codes."""
         with AUTH_LOCK:
             a = load_auth()
-            if path == "/api/admin/totp-enable":
-                pend = a.get("totp_pending")
-                c = totp_check(pend or "", payload.get("code"))
-                if not pend or c is None:
-                    login_failed(ip)
-                    return self.json(400, {"ok": False, "error": "Der Code stimmt nicht. Prüfe die Uhrzeit des Geräts."})
-                a["totp"] = {"enabled": True, "secret": pend, "last": c}
-                a.pop("totp_pending", None)
+            if path == "/api/admin/notfall-codes":
+                codes = new_notfall_codes()
+                a["notfall_codes"] = [sha256_hex(norm_notfall_code(c)) for c in codes]
                 save_auth(a)
-                return self.json(200, {"ok": True})
-
-            ok, _ = verify_password(str(payload.get("aktuell") or ""), a.get("pw", ""))
-            if not ok:
-                login_failed(ip)
-                return self.json(403, {"ok": False, "error": "Das aktuelle Passwort ist falsch."})
-
-            if path == "/api/admin/password":
-                new = check_new_password(payload.get("neu"))
-                a["pw"] = hash_password(new)
-                a["geaendert"] = int(time.time())
-                save_auth(a)
-                drop_sessions(keep_key=sess["key"])
-                return self.json(200, {"ok": True})
-            if path == "/api/admin/totp-begin":
-                secret = totp_new_secret()
-                a["totp_pending"] = secret
-                save_auth(a)
-                label = re.sub(r"[^A-Za-z0-9 ._-]", "", get_effective_settings()["shop_name"])[:40] or "Site-Engine"
-                from urllib.parse import quote
-                uri = f"otpauth://totp/{quote(label)}:admin?secret={secret}&issuer={quote(label)}&algorithm=SHA1&digits=6&period=30"
-                return self.json(200, {"ok": True, "secret": secret, "uri": uri})
-            if path == "/api/admin/recovery-email":
-                email = clean(payload.get("email"), 120)
-                if email and not EMAIL_RE.match(email):
-                    return self.json(400, {"ok": False, "error": "Die E-Mail-Adresse ist ungültig."})
-                if email:
-                    a["email"] = email
-                else:
-                    a.pop("email", None)
-                save_auth(a)
-                return self.json(200, {"ok": True})
-            if path == "/api/admin/totp-disable":
-                a.pop("totp", None)
-                a.pop("totp_pending", None)
-                save_auth(a)
-                return self.json(200, {"ok": True})
-        return self.json(404, {"ok": False, "error": "Unbekannter Admin-Endpunkt"})
+                log.info("Neue Notfall-Codes erzeugt von %s", sess.get("email") or "?")
+                return self.json(200, {"ok": True, "codes": codes})
+            # /api/admin/access
+            emails = payload.get("emails")
+            if not isinstance(emails, list) or len(emails) > 50:
+                return self.json(400, {"ok": False, "error": "Ungültige Liste."})
+            clean_list = []
+            for e in emails:
+                e = norm_email(e)
+                if not e:
+                    continue
+                if not EMAIL_RE.match(e) or len(e) > 120:
+                    return self.json(400, {"ok": False, "error": f"Ungültige E-Mail-Adresse: {e[:120]}"})
+                if e not in clean_list:
+                    clean_list.append(e)
+            new = dict(a, emails=clean_list)
+            if "client_id" in payload and not ENV("GOOGLE_CLIENT_ID", "").strip():
+                cid = str(payload.get("client_id") or "").strip()
+                if cid and not CLIENT_ID_RE.match(cid):
+                    return self.json(400, {"ok": False, "error": "Das ist keine gültige Google Client ID "
+                                                               "(…apps.googleusercontent.com)."})
+                new["google_client_id"] = cid
+            me = sess.get("email", "")
+            if "@" in me and me not in admin_emails(new):
+                return self.json(400, {"ok": False, "error": f"Damit würdest du dich selbst ({me}) aussperren."})
+            if not admin_login_possible(new):
+                return self.json(400, {"ok": False, "error": "Danach könnte sich niemand mehr anmelden. "
+                                                           "Erzeuge zuerst Notfall-Codes oder lass ein Konto stehen."})
+            save_auth(new)
+            return self.json(200, {"ok": True})
 
 
 # -------------------------------------------------------------------- Start
-def cli_reset_admin() -> int:
-    tok = create_setup_token("log", SETUP_TTL, force=True)
+def cli_notfall_link() -> int:
+    with AUTH_LOCK:
+        tok = create_setup_token(NOTFALL_TTL, force=True)
     base = site_base_url()
-    print(f"\nEinmal-Link zum Setzen des Admin-Passworts (gültig {SETUP_TTL // 60} Minuten):\n")
+    print(f"\nNotfall-Link für die Administration (einmalig, {NOTFALL_TTL // 60} Minuten gültig):\n")
     print(f"  {base or '<deine-domain>'}/admin/setup#{tok}\n")
-    print("Der Link funktioniert genau einmal. Bestehende Sitzungen werden beim Setzen beendet")
-    print("und eine eventuell aktive Zwei-Faktor-Anmeldung wird deaktiviert.\n")
+    print("Er öffnet direkt eine Admin-Sitzung. Danach Google-Zugang prüfen oder neue Notfall-Codes erzeugen.\n")
     return 0
 
 
 def announce_setup_if_needed():
-    """Ohne Passwort: Einrichtungs-Link ins Log (sichtbar z. B. in Argo CD: App -> Pod -> Logs)."""
-    if password_is_set():
+    """Kann sich niemand anmelden (keine Client ID / keine erlaubten Konten / keine Codes),
+    steht ein Notfall-Link im Log. Mit GOOGLE_CLIENT_ID + ADMIN_EMAILS passiert nichts."""
+    if admin_login_possible():
         return None
     with AUTH_LOCK:
-        tok = create_setup_token("log", SETUP_TTL_INITIAL, force=True)
-    log_setup_link(tok, SETUP_TTL_INITIAL, "EINRICHTUNG: noch kein Passwort gesetzt")
+        tok = create_setup_token(NOTFALL_TTL_INITIAL, force=True)
+    log.warning("Google-Anmeldung nicht eingerichtet: GOOGLE_CLIENT_ID und ADMIN_EMAILS in der ConfigMap setzen.")
+    log_setup_link(tok, NOTFALL_TTL_INITIAL, "EINRICHTUNG")
     return tok
 
 
@@ -2238,10 +2280,10 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     migrate_legacy_auth()
-    if argv[:1] == ["reset-admin"]:
-        return cli_reset_admin()
+    if argv[:1] in (["notfall-link"], ["reset-admin"]):
+        return cli_notfall_link()
     if argv:
-        print("Verwendung: server.py [reset-admin]", file=sys.stderr)
+        print("Verwendung: server.py [notfall-link]", file=sys.stderr)
         return 2
 
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)

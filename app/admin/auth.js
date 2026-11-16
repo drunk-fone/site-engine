@@ -1,4 +1,4 @@
-// Login- und Einrichtungsseite. Kein Inline-JS (Admin-CSP erlaubt nur 'self').
+// Login (Google / Notfall-Code) und Notfall-Link. Kein Inline-JS (CSP).
 (function () {
   function $(id) { return document.getElementById(id); }
   function post(url, body) {
@@ -8,40 +8,50 @@
     }).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Serverfehler (' + r.status + ')' }; }); });
   }
   function showError(msg) { var e = $('error'); e.textContent = msg; e.hidden = !msg; }
+  function done(res) {
+    if (res.ok) { location.replace('/admin'); return; }
+    showError(res.error || 'Anmeldung fehlgeschlagen');
+  }
 
   var page = document.body.getAttribute('data-page');
 
   if (page === 'login') {
-    fetch('/admin/login-info', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (info) {
-      if (info.setup) { $('setup-needed').hidden = false; $('login-form').hidden = true; return; }
-      $('code-row').hidden = !info.totp;
-      $('passwort').focus();
-    });
-    function recover(btn, msgEl, okText) {
-      btn.disabled = true;
-      post('/admin/recover', {}).then(function (res) {
-        btn.disabled = false;
-        msgEl.textContent = res.ok ? okText : (res.error || 'Fehler');
-        msgEl.hidden = false;
+    var info = null, gisReady = false;
+    function initGoogle() {
+      if (!info || !gisReady || !info.client_id) return;
+      google.accounts.id.initialize({
+        client_id: info.client_id,
+        nonce: info.nonce,
+        ux_mode: 'popup',
+        auto_select: false,
+        context: 'signin',
+        callback: function (resp) { showError(''); post('/admin/google', { credential: resp.credential }).then(done); }
+      });
+      var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+      google.accounts.id.renderButton($('google-btn'), {
+        type: 'standard', theme: dark ? 'filled_black' : 'outline', size: 'large',
+        text: 'signin_with', shape: 'pill', locale: 'de'
       });
     }
-    $('new-link').addEventListener('click', function () {
-      recover($('new-link'), $('new-link-msg'), 'Neuer Link steht jetzt im Server-Log (24 h gültig). Ist eine E-Mail für die Wiederherstellung hinterlegt, kommt er auch per E-Mail.');
+    // Von Googles Skript aufgerufen, sobald es geladen ist.
+    window.onGoogleLibraryLoad = function () { gisReady = true; initGoogle(); };
+    fetch('/admin/login-info', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      info = d;
+      var ready = d.client_id && d.erlaubt;
+      $('not-configured').hidden = !!ready;
+      $('google-area').hidden = !ready;
+      if (!ready && d.notfall) $('notfall').open = true;
+      if (window.google && google.accounts && google.accounts.id) gisReady = true;
+      initGoogle();
     });
-    $('forgot').addEventListener('click', function () {
-      recover($('forgot'), $('forgot-msg'), 'Ist eine Wiederherstellungs-E-Mail hinterlegt, ist der Link (30 Min. gültig) unterwegs. ' +
-        'Zusätzlich steht ein Link im Server-Log (Argo CD: App → Pod → Logs).');
-    });
-    $('login-form').addEventListener('submit', function (ev) {
+    $('notfall-form').addEventListener('submit', function (ev) {
       ev.preventDefault();
       showError('');
-      $('submit').disabled = true;
-      post('/admin/login', { passwort: $('passwort').value, code: $('code').value }).then(function (res) {
-        $('submit').disabled = false;
-        if (res.ok) { location.replace('/admin'); return; }
-        if (res.setup) { $('setup-needed').hidden = false; $('login-form').hidden = true; return; }
-        $('passwort').value = ''; $('code').value = '';
-        showError(res.error || 'Anmeldung fehlgeschlagen');
+      $('notfall-submit').disabled = true;
+      post('/admin/notfall', { code: $('code').value }).then(function (res) {
+        $('notfall-submit').disabled = false;
+        $('code').value = '';
+        done(res);
       });
     });
   }
@@ -54,15 +64,10 @@
     $('setup-form').addEventListener('submit', function (ev) {
       ev.preventDefault();
       showError('');
-      var pw = $('pw1').value;
-      if (pw !== $('pw2').value) return showError('Die Passwörter stimmen nicht überein.');
-      if (pw.length < 12) return showError('Das Passwort muss mindestens 12 Zeichen lang sein.');
       $('submit').disabled = true;
-      post('/admin/setup', { token: token || $('token').value.trim(), passwort: pw, code: $('code').value }).then(function (res) {
+      post('/admin/setup', { token: token || $('token').value.trim() }).then(function (res) {
         $('submit').disabled = false;
-        if (res.ok) { location.replace('/admin'); return; }
-        if (res.need_code) { $('code-row').hidden = false; $('code').focus(); }
-        showError(res.error || 'Fehler');
+        done(res);
       });
     });
   }
